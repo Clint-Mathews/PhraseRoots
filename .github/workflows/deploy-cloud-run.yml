@@ -32,4 +32,6 @@ jobs:
           --source backend
           --project "${{ vars.GCP_PROJECT_ID }}"
           --region "${{ vars.GCP_REGION }}"
+          --memory 4Gi
+          --concurrency 1
           --quiet

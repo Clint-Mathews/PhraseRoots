@@ -131,7 +131,7 @@ gcloud run deploy "$SERVICE_NAME" \
   --allow-unauthenticated \
     --set-secrets OPENROUTER_API_KEY=openrouter-api-key:latest,AUTH_PASSWORD=auth-password:latest,JWT_SECRET=jwt-secret:latest \
    --set-env-vars AUTH_USERNAME=YOUR_USERNAME,GOOGLE_DRIVE_FOLDER_ID=DRIVE_FOLDER_ID,ALLOWED_ORIGINS=http://localhost:5173,WHISPER_MODEL=small,WHISPER_COMPUTE_TYPE=int8 \
-  --memory 2Gi --cpu 2 --timeout 300
+   --memory 4Gi --cpu 2 --concurrency 1 --timeout 300
 ```
 
 5. Copy the service URL returned by the command and verify it:
