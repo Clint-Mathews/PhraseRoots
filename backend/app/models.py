@@ -5,6 +5,8 @@ from pydantic import BaseModel, ConfigDict, Field
 
 class TranslationRequest(BaseModel):
     text: str = Field(min_length=1, max_length=12_000)
+    source_language: Literal["Thai", "English"]
+    target_language: Literal["Thai", "English"]
 
 
 class LoginRequest(BaseModel):
@@ -20,12 +22,15 @@ class TokenResponse(BaseModel):
 class TranslationContent(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
+    romanization: str = Field(min_length=1)
     translation: str = Field(min_length=1)
     notes: list[str]
 
 
 class TranslationResponse(TranslationContent):
     source_text: str
+    source_language: Literal["Thai", "English"]
+    target_language: Literal["Thai", "English"]
     provider: Literal["gemini"] = "gemini"
 
 

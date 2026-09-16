@@ -3,7 +3,14 @@ import { createRoot } from "react-dom/client";
 import "./style.css";
 
 type Page = "record" | "translate" | "library";
-type Result = { source_text: string; translation: string; notes: string[] };
+type Result = {
+  source_text: string;
+  source_language: "Thai" | "English";
+  target_language: "Thai" | "English";
+  romanization: string;
+  translation: string;
+  notes: string[];
+};
 type Recording = {
   file_id: string;
   filename: string;
@@ -502,29 +509,131 @@ function Library({ onError, onLoadingChange }: { onError: (message: string) => v
 }
 
 function Translator({ onError, onLoadingChange }: { onError: (message: string) => void; onLoadingChange: (loading: boolean) => void }) {
-  const [mode, setMode] = useState<"text" | "audio">("text"),
+  const [mode, setMode] = useState<"text" | "audio">("audio"),
     [source, setSource] = useState("Thai"),
     [target, setTarget] = useState("English"),
-    [text, setText] = useState("วันนี้อากาศดีมาก เราไปเดินเล่นที่สวนกันไหม"),
+    [text, setText] = useState(""),
     [audio, setAudio] = useState<File | null>(null),
     [recordings, setRecordings] = useState<Recording[]>([]),
     [selectedRecording, setSelectedRecording] = useState(""),
     [result, setResult] = useState<Result | null>(null),
-    [working, setWorking] = useState(false);
+    [working, setWorking] = useState(false),
+    [speaking, setSpeaking] = useState<"thai" | "english" | null>(null);
+  const utteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
+  const defaultThai = "อย่ามายุ่งกับฉัน ฉันเกลียดงานของฉัน";
+  const defaultRomanization = "Yaa maa yung gap chan. Chan gliat ngan khong chan.";
+  const defaultEnglish = "Leave me alone. I hate my work.";
+  const thaiText = result
+    ? result.source_language === "Thai"
+      ? result.source_text
+      : result.translation
+    : defaultThai;
+  const englishText = result
+    ? result.source_language === "English"
+      ? result.source_text
+      : result.translation
+    : defaultEnglish;
+  useEffect(() => {
+    onLoadingChange(true);
+    apiFetch('/recordings')
+      .then(async (response) => {
+        if (!response.ok)
+          throw new Error(
+            (await response.json()).detail || "Could not load recordings",
+          );
+        return response.json();
+      })
+      .then((data) => setRecordings(data.recordings))
+      .catch((e) => onError(e instanceof Error ? e.message : "Could not load recordings"))
+      .finally(() => onLoadingChange(false));
+  }, []);
   const swap = () => {
     setSource(target);
     setTarget(source);
   };
+  useEffect(
+    () => () => {
+      window.speechSynthesis?.cancel();
+    },
+    [],
+  );
+  const listen = (
+    content: string,
+    language: "th-TH" | "en-US",
+    target: "thai" | "english",
+  ) => {
+    if (!("speechSynthesis" in window)) {
+      onError("Voice playback is not supported by this browser");
+      return;
+    }
+    if (speaking === target) {
+      window.speechSynthesis.cancel();
+      utteranceRef.current = null;
+      setSpeaking(null);
+      return;
+    }
+    window.speechSynthesis.cancel();
+    const utterance = new SpeechSynthesisUtterance(content);
+    utterance.lang = language;
+    utterance.onend = utterance.onerror = () => {
+      if (utteranceRef.current === utterance) {
+        utteranceRef.current = null;
+        setSpeaking(null);
+      }
+    };
+    utteranceRef.current = utterance;
+    setSpeaking(target);
+    window.speechSynthesis.speak(utterance);
+  };
+  const downloadTranslation = () => {
+    const romanization = result?.romanization || defaultRomanization;
+    const notes = result?.notes || [
+      "อย่ามายุ่งกับฉัน means “leave me alone”",
+      "ฉันเกลียดงานของฉัน means “I hate my work”",
+    ];
+    const file = new Blob(
+      [[
+        "PhraseRoots Translation",
+        "",
+        "THAI",
+        thaiText,
+        "",
+        "PRONUNCIATION",
+        romanization,
+        "",
+        "ENGLISH",
+        englishText,
+        "",
+        "CONTEXT & PHRASES",
+        ...notes.map((note) => `- ${note}`),
+        "",
+      ].join("\n")],
+      { type: "text/plain;charset=utf-8" },
+    );
+    const link = document.createElement("a");
+    const url = URL.createObjectURL(file);
+    link.href = url;
+    link.download = `phraseroots-translation-${new Date().toISOString().slice(0, 10)}.txt`;
+    document.body.append(link);
+    link.click();
+    link.remove();
+    window.setTimeout(() => URL.revokeObjectURL(url), 0);
+  };
   const translate = async (event: FormEvent) => {
     event.preventDefault();
     if (!text.trim()) return;
+    setResult(null);
     setWorking(true);
     onLoadingChange(true);
     try {
       const response = await apiFetch('/translate', {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text }),
+        body: JSON.stringify({
+          text,
+          source_language: source,
+          target_language: target,
+        }),
       });
       if (!response.ok)
         throw new Error(
@@ -558,6 +667,7 @@ function Translator({ onError, onLoadingChange }: { onError: (message: string) =
   const translateAudio = async (event: FormEvent) => {
     event.preventDefault();
     if (!audio && !selectedRecording) return;
+    setResult(null);
     setWorking(true);
     onLoadingChange(true);
     try {
@@ -593,19 +703,19 @@ function Translator({ onError, onLoadingChange }: { onError: (message: string) =
         <div className="translate-tabs">
           <button
             type="button"
-            className={mode === "text" ? "selected" : ""}
-            onClick={() => setMode("text")}
-            title="Translate typed or pasted text"
-          >
-            Text
-          </button>
-          <button
-            type="button"
             className={mode === "audio" ? "selected" : ""}
             onClick={openAudio}
             title="Translate an audio file or recording"
           >
             Audio
+          </button>
+          <button
+            type="button"
+            className={mode === "text" ? "selected" : ""}
+            onClick={() => setMode("text")}
+            title="Translate typed or pasted text"
+          >
+            Text
           </button>
         </div>
         {mode === "text" ? (
@@ -639,16 +749,21 @@ function Translator({ onError, onLoadingChange }: { onError: (message: string) =
               <textarea
                 value={text}
                 onChange={(e) => setText(e.target.value)}
-                placeholder="Paste or type a conversation..."
+                placeholder="Type text to translate..."
               />
               <span>{text.length} / 12,000</span>
             </div>
           </>
         ) : (
           <div className="audio-picker">
-            <label>
-              Upload audio from this device
+            <label className="audio-upload">
+              <span>Upload audio from this device</span>
+              <span className="audio-upload-button">
+                <Icon name="upload" />
+                Choose audio file
+              </span>
               <input
+                className="audio-file-input"
                 type="file"
                 accept="audio/m4a,audio/mpeg,audio/wav,audio/webm,.m4a,.mp3,.wav,.webm"
                 onChange={(e) => {
@@ -698,7 +813,12 @@ function Translator({ onError, onLoadingChange }: { onError: (message: string) =
             <p className="eyebrow">TRANSLATION NOTES</p>
             <h2>Side-by-side meaning</h2>
           </div>
-          <button className="icon-button" title="Download translation">
+          <button
+            type="button"
+            className="icon-button"
+            onClick={downloadTranslation}
+            title="Download translation"
+          >
             <Icon name="download" />
           </button>
         </div>
@@ -706,34 +826,58 @@ function Translator({ onError, onLoadingChange }: { onError: (message: string) =
           <article className="thai">
             <span>THAI</span>
             <p>
-              {result?.source_text ||
-                "วันนี้อากาศดีมาก เราไปเดินเล่นที่สวนกันไหม"}
+              {thaiText}
             </p>
-            <button title="Listen to Thai text">
-              <Icon name="play" /> Listen
+            <p className="romanization">
+              {result?.romanization || defaultRomanization}
+            </p>
+            <button
+              className={speaking === "thai" ? "listening" : ""}
+              onClick={() =>
+                listen(
+                  thaiText,
+                  "th-TH",
+                  "thai",
+                )
+              }
+              aria-pressed={speaking === "thai"}
+              title={speaking === "thai" ? "Stop Thai playback" : "Listen to Thai text"}
+            >
+              <Icon name="play" /> {speaking === "thai" ? "Stop" : "Listen"}
             </button>
           </article>
           <article className="english">
             <span>ENGLISH</span>
             <p>
-              {result?.translation ||
-                "The weather is very nice today. Shall we go for a walk in the park?"}
+              {englishText}
             </p>
-            <button title="Listen to English text">
-              <Icon name="play" /> Listen
+            <button
+              className={speaking === "english" ? "listening" : ""}
+              onClick={() =>
+                listen(
+                  englishText,
+                  "en-US",
+                  "english",
+                )
+              }
+              aria-pressed={speaking === "english"}
+              title={speaking === "english" ? "Stop English playback" : "Listen to English text"}
+            >
+              <Icon name="play" /> {speaking === "english" ? "Stop" : "Listen"}
             </button>
           </article>
         </div>
         <div className="notes">
           <b>Context & phrases</b>
-          {(
-            result?.notes || [
-              "วันนี้ (wan-nee) means “today”",
-              "กันไหม makes this a friendly invitation",
-            ]
-          ).map((note) => (
-            <p key={note}>{note}</p>
-          ))}
+          {working ? (
+            <p>Preparing context notes...</p>
+          ) : result?.notes.length ? (
+            result.notes.map((note) => <p key={note}>{note}</p>)
+          ) : result ? (
+            <p>No additional context notes for this translation.</p>
+          ) : (
+            <p>Translate a phrase to see its context and useful expressions.</p>
+          )}
         </div>
       </section>
     </div>

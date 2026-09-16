@@ -152,20 +152,70 @@
   gap: 12px;
   margin-bottom: 20px;
 }
-.audio-picker label {
+.audio-upload {
   display: grid;
   gap: 7px;
   color: #68726d;
   font: 500 11px "DM Mono";
 }
-.audio-picker input,
+.audio-file-input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+.audio-upload-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 44px;
+  border: 1px dashed #a7b9ad;
+  border-radius: 7px;
+  background: #f5f8f1;
+  color: #315c4c;
+  font: 600 13px "DM Sans";
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+.audio-upload:hover .audio-upload-button,
+.audio-upload:focus-within .audio-upload-button {
+  border-color: #5c8b72;
+  background: #e5eee2;
+}
+.audio-upload-button svg {
+  width: 17px;
+  height: 17px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.7;
+}
 .audio-picker select {
   width: 100%;
+  min-height: 44px;
+  appearance: none;
   border: 1px solid #d5d0c4;
   border-radius: 7px;
   background: #fffdf8;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23476659' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  background-position: right 13px center;
+  background-repeat: no-repeat;
+  background-size: 16px;
   padding: 11px;
+  padding-right: 42px;
   color: #203d36;
+  font: 600 13px "DM Sans";
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+.audio-picker select:hover {
+  border-color: #a7b9ad;
+}
+.audio-picker select:focus {
+  outline: 0;
+  border-color: #5c8b72;
+  box-shadow: 0 0 0 3px #dce6d8;
 }
 .audio-picker small,
 .audio-picker p {
@@ -706,6 +756,11 @@ h1 {
     serif;
   margin: 17px 0 10px;
 }
+.translation-grid article p.romanization {
+  margin: -4px 0 12px;
+  color: #557065;
+  font: italic 12px/1.45 "DM Sans";
+}
 .translation-grid article button {
   background: transparent;
   border: 0;
@@ -722,6 +777,10 @@ h1 {
   fill: none;
   stroke: currentColor;
   stroke-width: 1.5;
+}
+.translation-grid article button.listening {
+  color: #1d4b3e;
+  font-weight: 600;
 }
 .thai {
   background: #dce6d8;

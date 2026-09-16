@@ -27,7 +27,7 @@ from app.services.drive import (
     upload_recording,
 )
 from app.services.transcribe import TranscriptionError, transcribe_thai
-from app.services.translate import TranslationError, translate_to_english
+from app.services.translate import TranslationError, translate_text
 
 
 app = FastAPI(title="Thai Learning API")
@@ -68,8 +68,12 @@ def require_user(
 @app.post("/translate", response_model=TranslationResponse)
 def translate(request: TranslationRequest, _user: str = Depends(require_user)) -> TranslationResponse:
     try:
-        content = translate_to_english(
-            request.text, settings.gemini_api_key, settings.gemini_model
+        content = translate_text(
+            request.text,
+            request.source_language,
+            request.target_language,
+            settings.gemini_api_key,
+            settings.gemini_model,
         )
     except TranslationError as exc:
         raise HTTPException(
@@ -77,7 +81,12 @@ def translate(request: TranslationRequest, _user: str = Depends(require_user)) -
             detail=str(exc),
         ) from exc
 
-    return TranslationResponse(source_text=request.text, **content.model_dump())
+    return TranslationResponse(
+        source_text=request.text,
+        source_language=request.source_language,
+        target_language=request.target_language,
+        **content.model_dump(),
+    )
 
 
 @app.post("/translate/audio", response_model=AudioTranslationResponse)
@@ -117,8 +126,10 @@ async def translate_audio(audio: UploadFile = File(...), _user: str = Depends(re
             settings.whisper_compute_type,
         )
         content = await run_in_threadpool(
-            translate_to_english,
+            translate_text,
             transcript,
+            "Thai",
+            "English",
             settings.gemini_api_key,
             settings.gemini_model,
         )
@@ -138,6 +149,8 @@ async def translate_audio(audio: UploadFile = File(...), _user: str = Depends(re
     return AudioTranslationResponse(
         filename=filename,
         source_text=transcript,
+        source_language="Thai",
+        target_language="English",
         **content.model_dump(),
     )
 
@@ -179,8 +192,10 @@ async def translate_drive_recording(
             settings.whisper_compute_type,
         )
         content = await run_in_threadpool(
-            translate_to_english,
+            translate_text,
             transcript,
+            "Thai",
+            "English",
             settings.gemini_api_key,
             settings.gemini_model,
         )
@@ -196,7 +211,11 @@ async def translate_drive_recording(
                 pass
 
     return AudioTranslationResponse(
-        filename=filename, source_text=transcript, **content.model_dump()
+        filename=filename,
+        source_text=transcript,
+        source_language="Thai",
+        target_language="English",
+        **content.model_dump(),
     )
 
 
