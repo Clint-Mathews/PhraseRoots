@@ -55,7 +55,12 @@ function Icon({
      | "play"
      | "view"
      | "conversation"
-     | "phrases";
+      | "phrases"
+      | "headphones"
+      | "check"
+      | "pause"
+      | "stop"
+      | "search";
 }) {
   const paths = {
     mic: (
@@ -109,6 +114,11 @@ function Icon({
         <path d="M8 8h8M8 12h8M8 16h5" />
       </>
     ),
+    headphones: <path d="M4 14v-3a8 8 0 0 1 16 0v3M4 12h3v8H4a2 2 0 0 1-2-2v-4a2 2 0 0 1 2-2Zm16 0h-3v8h3a2 2 0 0 0 2-2v-4a2 2 0 0 0-2-2Z" />,
+    check: <path d="m5 12 4 4L19 6" />,
+    pause: <path d="M8 5v14M16 5v14" />,
+    stop: <rect x="6" y="6" width="12" height="12" rx="2" />,
+    search: <><circle cx="10.5" cy="10.5" r="6.5" /><path d="m16 16 5 5" /></>,
   };
   return (
     <svg viewBox="0 0 24 24" aria-hidden="true">
@@ -116,6 +126,27 @@ function Icon({
     </svg>
   );
 }
+
+function Brand({ compact = false }: { compact?: boolean }) {
+  return (
+    <>
+      <img className="brand-icon" src="/icon.svg" alt="" width="42" height="42" />
+      {!compact && <span className="brand-name">Phrase<span>Roots</span><small>A LITTLE CLOSER</small></span>}
+    </>
+  );
+}
+
+function EmptyState({ icon, title, children }: { icon: "conversation" | "phrases" | "library"; title: string; children: React.ReactNode }) {
+  return <div className="empty-state"><span className="empty-icon"><Icon name={icon} /></span><h3>{title}</h3><p>{children}</p></div>;
+}
+
+const pages: { id: Page; label: string; icon: "conversation" | "mic" | "sparkle" | "phrases" | "library"; title: string; description: string }[] = [
+  { id: "live", label: "Live", icon: "conversation", title: "Live conversation", description: "Less lost in translation. More in the moment." },
+  { id: "record", label: "Record", icon: "mic", title: "Capture a conversation", description: "Keep the moments. Come back to the meaning." },
+  { id: "translate", label: "Translate", icon: "sparkle", title: "Translate with context", description: "Go beyond the words. Find what they really mean." },
+  { id: "phrases", label: "Phrases", icon: "phrases", title: "Your phrase collection", description: "Discover the words that keep bringing you together." },
+  { id: "library", label: "Library", icon: "library", title: "Recording library", description: "Every conversation, a little more understanding." },
+];
 
 function App() {
   const [page, setPage] = useState<Page>("live");
@@ -137,60 +168,33 @@ function App() {
     localStorage.removeItem(TOKEN_KEY);
     setAuthenticated(false);
   };
+  const currentPage = pages.find((item) => item.id === page)!;
   return (
-    <main>
-      <aside>
+    <main className="app-shell">
+      <a className="skip-link" href="#workspace">Skip to workspace</a>
+      <aside className="sidebar">
         <button className="brand" onClick={() => setPage("live")} title="Go to live conversation">
-          <span>PR</span>
-          <b>PhraseRoots</b>
+          <Brand />
         </button>
-        <nav>
-          <button
-            className={page === "live" ? "active" : ""}
-            onClick={() => setPage("live")}
-            title="Translate a conversation as it happens"
-          >
-            <Icon name="conversation" />
-            Live
-          </button>
-          <button
-            className={page === "record" ? "active" : ""}
-            onClick={() => setPage("record")}
-            title="Record a conversation"
-          >
-            <Icon name="mic" />
-            Record
-          </button>
-          <button
-            className={page === "translate" ? "active" : ""}
-            onClick={() => setPage("translate")}
-            title="Translate text or audio"
-          >
-            <Icon name="sparkle" />
-            Translate
-          </button>
-          <button
-            className={page === "phrases" ? "active" : ""}
-            onClick={() => setPage("phrases")}
-            title="View repeated conversation phrases"
-          >
-            <Icon name="phrases" />
-            Phrases
-          </button>
-          <button
-            className={page === "library" ? "active" : ""}
-            onClick={() => setPage("library")}
-            title="View recording library"
-          >
-            <Icon name="library" />
-            Library
-          </button>
+        <p className="nav-label eyebrow">WORKSPACE</p>
+        <nav aria-label="Workspace">
+          {pages.map((item) => (
+            <button key={item.id} className={page === item.id ? "active" : ""} onClick={() => setPage(item.id)} aria-current={page === item.id ? "page" : undefined}>
+              <Icon name={item.icon} /><span>{item.label}</span><span className="nav-indicator" aria-hidden="true" />
+            </button>
+          ))}
         </nav>
         <div className="aside-bottom">
+          <div className="workspace-note">
+            <span className="workspace-note-icon"><Icon name="sparkle" /></span>
+            <b>Rooted in understanding.</b>
+            <p>A space for your words,<br />in both languages.</p>
+            <span className="language-mini">TH <Icon name="swap" /> EN</span>
+          </div>
           <div className="profile">
-            <strong>CS</strong>
+            <strong><Icon name="headphones" /></strong>
             <span>
-              <b>Clint</b>
+              <b>My workspace</b>
               <small>Personal workspace</small>
             </span>
             <button className="logout" onClick={logout} aria-label="Log out" title="Log out">
@@ -199,23 +203,15 @@ function App() {
           </div>
         </div>
       </aside>
-      <section className="content">
-        <header>
+      <section className="content" id="workspace" tabIndex={-1}>
+        <div className="workspace-topline"><span>Workspace <span>/</span> {currentPage.label}</span><span className="workspace-private"><span /> PERSONAL SPACE</span></div>
+        <header className="page-header">
           <div>
-            <p className="eyebrow">YOUR LANGUAGE DESK</p>
-            <h1>
-              {page === "record"
-                ? "Capture a conversation"
-                : page === "live"
-                  ? "Live conversation"
-                  : page === "phrases"
-                    ? "Conversation phrases"
-                : page === "translate"
-                  ? "Translate with context"
-                  : "Recording library"}
-            </h1>
+            <p className="eyebrow">YOUR LANGUAGE, CONNECTED</p>
+            <h1>{currentPage.title}</h1>
+            <p className="page-description">{currentPage.description}</p>
           </div>
-          <span className="status-dot" title="PhraseRoots is ready to use">Online</span>
+          <span className="language-badge"><span>ก</span> Thai <Icon name="swap" /> English <span>A</span></span>
         </header>
         <div className={`top-loader${loading ? " active" : ""}`} aria-hidden="true">
           <span />
@@ -235,12 +231,13 @@ function App() {
             }}
           />
         ) : page === "phrases" ? (
-          <PhraseViewer phrases={phrases} onError={showError} onLoadingChange={setLoading} />
+          <PhraseViewer phrases={phrases} onError={showError} onLoadingChange={setLoading} onStart={() => setPage("live")} />
         ) : page === "translate" ? (
           <Translator onError={showError} onLoadingChange={setLoading} onPhrases={setPhrases} />
         ) : (
-          <Library onError={showError} onLoadingChange={setLoading} />
+          <Library onError={showError} onLoadingChange={setLoading} onRecord={() => setPage("record")} />
         )}
+        <footer className="workspace-footer"><span>Made for meaningful conversations.</span><span>PHRASEROOTS <span className="footer-dot">✦</span> TH / EN</span></footer>
       </section>
       <Toast message={error} onDismiss={() => setError("")} />
     </main>
@@ -302,15 +299,35 @@ function Login({ onSuccess, onError }: { onSuccess: () => void; onError: (messag
   };
   return (
     <main className="login-page">
+      <section className="login-story" aria-label="Welcome to PhraseRoots">
+        <div className="brand"><Brand /></div>
+        <div className="login-intro">
+          <p className="eyebrow"><span className="tiny-spark">✦</span> WORDS BECOME CONNECTIONS</p>
+          <h1>Good conversations<br />know <em>no borders.</em></h1>
+          <p>Your personal bridge between Thai and English.<br />Listen, understand, and find a little more connection.</p>
+          <div className="conversation-art" aria-hidden="true">
+            <div className="art-orbit orbit-one" /><div className="art-orbit orbit-two" />
+            <div className="art-core"><Brand compact /></div>
+            <div className="art-bubble thai-bubble"><small>THAI</small><b lang="th">สวัสดี</b><span>sà-wàt-dii</span></div>
+            <div className="art-bubble english-bubble"><small>ENGLISH</small><b>Hello.</b><span>A connection starts here.</span></div>
+            <span className="art-star star-one">✦</span><span className="art-star star-two">✦</span>
+          </div>
+        </div>
+        <div className="login-features"><span><Icon name="conversation" /> Live conversations</span><span><Icon name="sparkle" /> Context that matters</span><span><Icon name="phrases" /> Words that stay</span></div>
+      </section>
+      <div className="login-form-wrap">
       <form className="login-card" onSubmit={submit}>
-        <span className="login-mark">PR</span>
-        <p className="eyebrow">PHRASEROOTS</p>
-        <h1>Your language desk</h1>
-        <p>Sign in to access your private workspace.</p>
+        <div className="login-mark"><Brand compact /></div>
+        <p className="eyebrow">YOUR PERSONAL LANGUAGE SPACE</p>
+        <h2>Welcome back.</h2>
+        <p>A little understanding goes a long way.<br />Sign in to your workspace to get started.</p>
         <label>
           Username
           <input
             autoComplete="username"
+            autoCapitalize="none"
+            spellCheck={false}
+            placeholder="Enter your username"
             value={username}
             onChange={(event) => setUsername(event.target.value)}
             required
@@ -321,15 +338,19 @@ function Login({ onSuccess, onError }: { onSuccess: () => void; onError: (messag
           <input
             type="password"
             autoComplete="current-password"
+            placeholder="Enter your password"
             value={password}
             onChange={(event) => setPassword(event.target.value)}
             required
           />
         </label>
-        <button disabled={working} title="Sign in to PhraseRoots">
-          {working ? "Signing in..." : "Sign in"}
+        <button className="primary-button" disabled={working} title="Sign in to PhraseRoots">
+          {working ? "Signing in..." : "Enter your workspace"}<Icon name="arrow" />
         </button>
+        <div className="login-caption"><span /> Your words. Your workspace.</div>
       </form>
+      <p className="login-footnote">A LITTLE CLOSER, ONE CONVERSATION AT A TIME.</p>
+      </div>
     </main>
   );
 }
@@ -415,7 +436,7 @@ function Recorder({ onOpenLibrary, onError, onLoadingChange }: { onOpenLibrary: 
   const time = `${String(Math.floor(seconds / 60)).padStart(2, "0")}:${String(seconds % 60).padStart(2, "0")}`;
   return (
     <div className="record-layout">
-      <section className="record-card">
+      <section className={`record-card${recording ? " is-recording" : ""}`}>
         <div className="record-top">
           <span className={recording ? "live" : ""}>
             {recording
@@ -424,11 +445,12 @@ function Recorder({ onOpenLibrary, onError, onLoadingChange }: { onOpenLibrary: 
                 ? "READY TO SAVE"
                 : "NEW RECORDING"}
           </span>
-          <span>{time}</span>
+          <time>{time}</time>
         </div>
-        <div className="wave">
+        <div className="recorder-heading"><span className="eyebrow">MAKE ROOM FOR EVERY WORD</span><h2>{recording ? "A moment worth keeping." : audio ? "A conversation, captured." : "Press record. Be present."}</h2></div>
+        <div className="wave" aria-hidden="true">
           {Array.from({ length: 35 }, (_, i) => (
-            <i key={i} style={{ height: `${16 + ((i * 31) % 65)}%` }} />
+            <i key={i} style={{ height: `${16 + ((i * 31) % 65)}%`, animationDelay: `${i * 55}ms` }} />
           ))}
         </div>
         <button
@@ -436,7 +458,7 @@ function Recorder({ onOpenLibrary, onError, onLoadingChange }: { onOpenLibrary: 
           onClick={toggle}
           title={recording ? "Stop recording" : "Start recording"}
         >
-          <Icon name="mic" />
+          <Icon name={recording ? "stop" : "mic"} />
           <span>
             {recording
               ? "Stop recording"
@@ -468,8 +490,9 @@ function Recorder({ onOpenLibrary, onError, onLoadingChange }: { onOpenLibrary: 
             (option) => (
               <button
                 key={option}
-                onClick={() => setSaving(option)}
-                className={saving === option ? "selected" : ""}
+                 onClick={() => setSaving(option)}
+                 className={saving === option ? "selected" : ""}
+                 aria-pressed={saving === option}
                 title={`Choose ${option}`}
               >
                 <span className="radio" />
@@ -738,24 +761,40 @@ function LiveConversation({ onError, onLoadingChange, onPhrases }: { onError: (m
       : "Ready to start";
   return (
     <section className="live-layout">
+      <div className={`live-console${running && !paused ? " is-listening" : ""}`}>
       <div className="live-controls">
         <div>
-          <p className="eyebrow">{running ? paused ? "LISTENING PAUSED" : "LISTENING AND TRANSLATING" : "READY FOR A LIVE CONVERSATION"}</p>
-          <h2>{running ? paused ? "Microphone capture is paused. Resume when you are ready." : "Translation appears after each spoken section." : "Speak naturally. Short pauses create each translation."}</h2>
-          <div className="live-status" aria-live="polite"><span className={running && !paused ? "active" : ""} /><b>{status}</b><time>{time}</time></div>
+          <p className="console-label"><span /> {running ? paused ? "TAKE YOUR TIME" : "CONVERSATION IN PROGRESS" : "A SPACE TO CONNECT"}</p>
+          <h2>{running ? paused ? <>A little pause.<br /><em>Pick up when you’re ready.</em></> : <>We’re listening.<br /><em>Stay in the moment.</em></> : <>Speak freely.<br /><em>Connect naturally.</em></>}</h2>
+          <p className="console-description">{running ? paused ? "Your conversation is on hold. Resume to continue capturing speech." : "Keep speaking naturally. Your Thai speech is translated into English, one section at a time." : "Turn Thai conversations into understanding, with English translations and pronunciation along the way."}</p>
         </div>
         <div className="live-actions">
-          {running && <button className="pause-live" onClick={paused ? resume : pause}>{paused ? "Resume listening" : "Pause listening"}</button>}
+          {running && <button className="pause-live" onClick={paused ? resume : pause}><Icon name={paused ? "play" : "pause"} />{paused ? "Resume listening" : "Pause listening"}</button>}
           <button className={`live-button${running ? " stop" : ""}`} onClick={running ? stop : start}>
-            <Icon name="mic" /> {running ? "End conversation" : "Start live translation"}
+            <Icon name={running ? "stop" : "mic"} /> {running ? "End conversation" : "Start live translation"}{!running && <Icon name="arrow" />}
           </button>
         </div>
+        <p className="console-hint"><Icon name="headphones" /> Best in a quiet space, close to your microphone.</p>
       </div>
+      <div className="signal-panel" aria-hidden="true">
+        <div className="signal-orbit outer" /><div className="signal-orbit inner" />
+        <span className="signal-point point-one" /><span className="signal-point point-two" />
+        <div className="signal-core"><Icon name={paused ? "pause" : "mic"} /></div>
+        <span className="signal-language signal-thai">ก <small>THAI</small></span>
+        <span className="signal-language signal-english">A <small>ENGLISH</small></span>
+        <span className="signal-caption">VOICE INTO UNDERSTANDING</span>
+      </div>
+      <div className="session-bar">
+      <div className="live-status" role="status"><span className={running && !paused ? "active" : ""} /><b>{status}</b></div>
       <div className={`live-activity${running && !paused ? " listening" : ""}`} aria-hidden="true">
-        {Array.from({ length: 25 }, (_, index) => <i key={index} style={{ animationDelay: `${index * 45}ms` }} />)}
+        {Array.from({ length: 25 }, (_, index) => <i key={index} style={{ height: `${6 + ((index * 7) % 19)}px`, animationDelay: `${index * 45}ms` }} />)}
       </div>
+      <time className="session-time" aria-label={`Session duration ${Math.floor(seconds / 60)} minutes ${seconds % 60} seconds`}>{time}<span> SESSION</span></time>
+      </div>
+      </div>
+      <div className="section-heading"><div><span className="section-icon"><Icon name="conversation" /></span><h2>Conversation feed</h2></div><span className="section-meta">{segments.length ? `${segments.length} translated section${segments.length === 1 ? "" : "s"}` : "THAI → ENGLISH"}</span></div>
       <div className="live-stream" aria-live="polite">
-        {!segments.length && <p className="live-empty">{running ? "Listening for the first phrase..." : "Your translated conversation will appear here."}</p>}
+        {!segments.length && <EmptyState icon="conversation" title={running ? paused ? "Ready when you are" : "Listening for your first words…" : "A conversation waiting to happen"}>{running ? paused ? "Resume listening to continue your conversation." : "Speak a few words in Thai. Your translation will appear after the first spoken section." : "Start live translation and your words will find a home here. Original speech, pronunciation, and meaning — together."}</EmptyState>}
         {segments.map((segment, index) => (
           <article key={`${segment.timestamp}-${index}`}>
             <time>{new Date(segment.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</time>
@@ -778,11 +817,16 @@ function LiveConversation({ onError, onLoadingChange, onPhrases }: { onError: (m
           </div>
         </div>
       )}
+      <div className="conversation-guide">
+        <article><span className="guide-icon"><Icon name="mic" /></span><div><h3>Speak naturally</h3><p>Stay in the conversation. We’ll take care of the words.</p></div><span className="guide-number">01</span></article>
+        <article><span className="guide-icon"><Icon name="sparkle" /></span><div><h3>Find the meaning</h3><p>Thai speech, English meaning, and a guide to pronunciation.</p></div><span className="guide-number">02</span></article>
+        <article><span className="guide-icon"><Icon name="phrases" /></span><div><h3>Let the words stay</h3><p>Revisit repeated phrases and save your recording afterward.</p></div><span className="guide-number">03</span></article>
+      </div>
     </section>
   );
 }
 
-function PhraseViewer({ phrases, onError, onLoadingChange }: { phrases: Phrase[]; onError: (message: string) => void; onLoadingChange: (loading: boolean) => void }) {
+function PhraseViewer({ phrases, onError, onLoadingChange, onStart }: { phrases: Phrase[]; onError: (message: string) => void; onLoadingChange: (loading: boolean) => void; onStart: () => void }) {
   const [selected, setSelected] = useState<Phrase | null>(null);
   const [meaning, setMeaning] = useState<Result | null>(null);
   const explain = async (phrase: Phrase) => {
@@ -803,7 +847,7 @@ function PhraseViewer({ phrases, onError, onLoadingChange }: { phrases: Phrase[]
       onLoadingChange(false);
     }
   };
-  if (!phrases.length) return <p className="library-state">Finish a live conversation with repeated words or phrases to view them here.</p>;
+  if (!phrases.length) return <section className="empty-panel"><EmptyState icon="phrases" title="Familiar words take root here">Finish a live conversation or translate a recording to discover repeated Thai words and phrases. Explore their meaning, one phrase at a time.</EmptyState><button className="primary-button" onClick={onStart}><Icon name="conversation" />Start a conversation<Icon name="arrow" /></button></section>;
   return (
     <section className="phrase-layout">
       <div className="phrase-list">
@@ -815,13 +859,13 @@ function PhraseViewer({ phrases, onError, onLoadingChange }: { phrases: Phrase[]
         ))}
       </div>
       <article className="phrase-detail">
-        {selected ? <><p className="eyebrow">PHRASE EXPLANATION</p><h2>{selected.text}</h2>{meaning ? <><p className="phrase-meaning">{meaning.translation}</p><p className="live-romanization">{meaning.romanization}</p>{meaning.notes.map((note) => <p className="phrase-note" key={note}>{note}</p>)}</> : <p>Selecting phrase explanation...</p>}</> : <p>Select a repeated word or phrase to translate and explain it.</p>}
+        {selected ? <><p className="eyebrow">PHRASE EXPLANATION</p><h2>{selected.text}</h2>{meaning ? <><p className="phrase-meaning">{meaning.translation}</p><p className="live-romanization">{meaning.romanization}</p>{meaning.notes.map((note) => <p className="phrase-note" key={note}>{note}</p>)}</> : <p>Finding the meaning...</p>}</> : <EmptyState icon="phrases" title="There’s more to every phrase">Select a word or phrase to explore its translation and context.</EmptyState>}
       </article>
     </section>
   );
 }
 
-function Library({ onError, onLoadingChange }: { onError: (message: string) => void; onLoadingChange: (loading: boolean) => void }) {
+function Library({ onError, onLoadingChange, onRecord }: { onError: (message: string) => void; onLoadingChange: (loading: boolean) => void; onRecord: () => void }) {
   const [recordings, setRecordings] = useState<Recording[]>([]),
     [loading, setLoading] = useState(true),
     [search, setSearch] = useState(""),
@@ -860,6 +904,7 @@ function Library({ onError, onLoadingChange }: { onError: (message: string) => v
   }, [page, pageToken, search]);
   return (
     <section className="library-list">
+      <div className="library-toolbar"><label className="search-field"><Icon name="search" />
       <input
         className="recording-search"
         type="search"
@@ -873,9 +918,11 @@ function Library({ onError, onLoadingChange }: { onError: (message: string) => v
         placeholder="Search recordings"
         aria-label="Search recordings"
       />
-      {loading ? <p className="library-state">Loading recordings...</p> : !recordings.length ? <p className="library-state">No recordings found.</p> : recordings.map((recording) => (
+      </label><button className="primary-button" onClick={onRecord}><Icon name="mic" />New recording</button></div>
+      <div className="section-heading"><div><h2>Your recordings</h2></div><span className="section-meta"><Icon name="library" /> GOOGLE DRIVE</span></div>
+      {loading ? <p className="library-state" role="status">Loading your recordings...</p> : !recordings.length ? <div className="empty-panel"><EmptyState icon="library" title={search ? "No matching conversations" : "Keep a little of the conversation"}>{search ? "Try a different recording name to find what you’re looking for." : "Your saved Google Drive recordings will appear here. Record a conversation, give it a name, and make it yours."}</EmptyState></div> : recordings.map((recording) => (
           <article key={recording.file_id}>
-            <div>
+            <span className="recording-icon"><Icon name="headphones" /></span><div className="recording-info">
               <b>{recording.filename}</b>
               <small>{new Date(recording.created_time).toLocaleString()}</small>
             </div>
@@ -913,9 +960,9 @@ function Translator({ onError, onLoadingChange, onPhrases }: { onError: (message
     [working, setWorking] = useState(false),
     [speaking, setSpeaking] = useState<"thai" | "english" | null>(null);
   const utteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
-  const defaultThai = "อย่ามายุ่งกับฉัน ฉันเกลียดงานของฉัน";
-  const defaultRomanization = "Yaa maa yung gap chan. Chan gliat ngan khong chan.";
-  const defaultEnglish = "Leave me alone. I hate my work.";
+  const defaultThai = "สวัสดี วันนี้เป็นอย่างไรบ้าง";
+  const defaultRomanization = "Sà-wàt-dii. Wan níi pen yàang-rai bâang?";
+  const defaultEnglish = "Hello. How is your day going?";
   const thaiText = result
     ? result.source_language === "Thai"
       ? result.source_text
@@ -981,8 +1028,8 @@ function Translator({ onError, onLoadingChange, onPhrases }: { onError: (message
   const downloadTranslation = () => {
     const romanization = result?.romanization || (hasInteracted ? "" : defaultRomanization);
     const notes = result?.notes || [
-      "อย่ามายุ่งกับฉัน means “leave me alone”",
-      "ฉันเกลียดงานของฉัน means “I hate my work”",
+      "สวัสดี is a greeting meaning “hello”.",
+      "วันนี้เป็นอย่างไรบ้าง asks how someone’s day is going.",
     ];
     const file = new Blob(
       [[
@@ -1061,6 +1108,7 @@ function Translator({ onError, onLoadingChange, onPhrases }: { onError: (message
   const translateAudio = async (event: FormEvent) => {
     event.preventDefault();
     if (!audio && !selectedRecording) return;
+    setHasInteracted(true);
     setResult(null);
     setWorking(true);
     onLoadingChange(true);
@@ -1105,22 +1153,25 @@ function Translator({ onError, onLoadingChange, onPhrases }: { onError: (message
   return (
     <div className="translate-layout">
       <form onSubmit={mode === "text" ? translate : translateAudio}>
-        <div className="translate-tabs">
+        <div className="panel-heading"><p className="eyebrow">MAKE YOURSELF UNDERSTOOD</p><h2>A new perspective.</h2><p>Bring your words. We’ll find the meaning.</p></div>
+        <div className="translate-tabs" aria-label="Translation input">
           <button
             type="button"
             className={mode === "audio" ? "selected" : ""}
+            aria-pressed={mode === "audio"}
             onClick={openAudio}
             title="Translate an audio file or recording"
           >
-            Audio
+            <Icon name="headphones" />Audio
           </button>
           <button
             type="button"
             className={mode === "text" ? "selected" : ""}
+            aria-pressed={mode === "text"}
             onClick={() => setMode("text")}
             title="Translate typed or pasted text"
           >
-            Text
+            <Icon name="phrases" />Text
           </button>
         </div>
         {mode === "text" ? (
@@ -1129,6 +1180,7 @@ function Translator({ onError, onLoadingChange, onPhrases }: { onError: (message
               <label>
                 FROM
                 <select
+                  aria-label="Source language"
                   value={source}
                   onChange={(e) => setSource(e.target.value)}
                 >
@@ -1136,12 +1188,13 @@ function Translator({ onError, onLoadingChange, onPhrases }: { onError: (message
                   <option>English</option>
                 </select>
               </label>
-              <button type="button" className="swap" onClick={swap} title="Swap languages">
+              <button type="button" className="swap" onClick={swap} title="Swap languages" aria-label="Swap languages">
                 <Icon name="swap" />
               </button>
               <label>
                 TO
                 <select
+                  aria-label="Target language"
                   value={target}
                   onChange={(e) => setTarget(e.target.value)}
                 >
@@ -1159,6 +1212,8 @@ function Translator({ onError, onLoadingChange, onPhrases }: { onError: (message
                   setHasInteracted(true);
                 }}
                 placeholder="Type text to translate..."
+                aria-label="Text to translate"
+                maxLength={12000}
               />
               <span>{text.length} / 12,000</span>
             </div>
@@ -1196,6 +1251,7 @@ function Translator({ onError, onLoadingChange, onPhrases }: { onError: (message
             </label>
             <p>or choose a recording from your Library</p>
             <select
+              aria-label="Choose a Library recording"
               value={selectedRecording}
               onChange={(e) => {
                 setSelectedRecording(e.target.value);
@@ -1214,7 +1270,7 @@ function Translator({ onError, onLoadingChange, onPhrases }: { onError: (message
         <button
           className="translate-button"
           disabled={
-            working || (mode === "audio" && !audio && !selectedRecording)
+            working || (mode === "audio" ? !audio && !selectedRecording : !text.trim())
           }
           title={mode === "audio" ? "Translate selected audio" : "Translate conversation"}
         >
@@ -1239,10 +1295,13 @@ function Translator({ onError, onLoadingChange, onPhrases }: { onError: (message
             className="icon-button"
             onClick={downloadTranslation}
             title="Download translation"
+            aria-label="Download translation"
+            disabled={working || (!thaiText && !englishText)}
           >
             <Icon name="download" />
           </button>
         </div>
+        {!result && !hasInteracted && <p className="example-label"><Icon name="sparkle" /> A little inspiration · Example translation</p>}
         <div className="translation-grid">
           <article className="thai">
             <span>THAI</span>
@@ -1262,6 +1321,7 @@ function Translator({ onError, onLoadingChange, onPhrases }: { onError: (message
                 )
               }
               aria-pressed={speaking === "thai"}
+              disabled={!thaiText || working}
               title={speaking === "thai" ? "Stop Thai playback" : "Listen to Thai text"}
             >
               <Icon name="play" /> {speaking === "thai" ? "Stop" : "Listen"}
@@ -1282,6 +1342,7 @@ function Translator({ onError, onLoadingChange, onPhrases }: { onError: (message
                 )
               }
               aria-pressed={speaking === "english"}
+              disabled={!englishText || working}
               title={speaking === "english" ? "Stop English playback" : "Listen to English text"}
             >
               <Icon name="play" /> {speaking === "english" ? "Stop" : "Listen"}
