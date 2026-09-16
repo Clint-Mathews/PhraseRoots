@@ -132,8 +132,8 @@ curl https://YOUR_CLOUD_RUN_URL/health
 
 ### Deploy UI to Vercel
 
-1. Import `Clint-Mathews/PhraseRoots` in Vercel and set the project root
-directory to `frontend`.
+1. Import this repository in Vercel and set the project root directory to
+`frontend`.
 2. Add the `VITE_API_URL` environment variable for Production, Preview, and
 Development. Its value is the Cloud Run URL from the previous section, without
 a trailing slash.
@@ -147,6 +147,46 @@ gcloud run services update "$SERVICE_NAME" \
 ```
 
 Do not set `GEMINI_API_KEY` in Vercel: it belongs only on the backend.
+
+### Continuous deployment
+
+Pushes to `main` deploy backend changes to Cloud Run and frontend changes to
+Vercel through the workflows in `.github/workflows/`. They use the production
+GitHub environment, so configure its required secrets and variables before
+pushing deployment changes.
+
+For Cloud Run, use Workload Identity Federation rather than a downloaded
+service-account key. Create a GitHub OIDC provider restricted to this
+repository and a dedicated deployer service account. Grant that account:
+
+```text
+roles/run.admin on the project
+roles/cloudbuild.builds.editor on the project
+roles/iam.serviceAccountUser on the Cloud Run runtime service account
+```
+
+Add these GitHub repository variables:
+
+```text
+GCP_PROJECT_ID=YOUR_PROJECT_ID
+GCP_REGION=YOUR_REGION
+GCP_CLOUD_RUN_SERVICE=YOUR_CLOUD_RUN_SERVICE
+GCP_WORKLOAD_IDENTITY_PROVIDER=projects/PROJECT_NUMBER/locations/global/workloadIdentityPools/POOL_ID/providers/PROVIDER_ID
+GCP_DEPLOYER_SERVICE_ACCOUNT=DEPLOYER_SERVICE_ACCOUNT_EMAIL
+```
+
+Add these GitHub repository secrets for Vercel:
+
+```text
+VERCEL_TOKEN
+VERCEL_ORG_ID
+VERCEL_PROJECT_ID
+```
+
+Create `VERCEL_TOKEN` in the Vercel account settings. Obtain the organization
+and project IDs from the Vercel project settings. Keep `VITE_API_URL` in the
+Vercel project environment settings, not in GitHub Actions; the workflow pulls
+it during the production build.
 
 ## API
 
