@@ -9,6 +9,7 @@ dependencies = [
     "google-auth>=2.0.0",
     "faster-whisper>=1.2.1",
     "pydantic-settings>=2.15.0",
+    "PyJWT>=2.10.1",
     "pythainlp>=5.3.7",
     "python-multipart>=0.0.32",
     "sqlalchemy>=2.0.52",

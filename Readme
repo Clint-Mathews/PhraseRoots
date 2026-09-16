@@ -16,6 +16,16 @@ uv run uvicorn app.main:app --reload
 Set `GEMINI_API_KEY` in `.env` after creating a key in Google AI Studio. Do not
 add API keys to the repository or Vercel frontend environment variables.
 
+Configure the UI login at the same time. The API refuses protected requests
+until all three values are set. Generate the secret with `openssl rand -hex 32`.
+
+```env
+AUTH_USERNAME=your-username
+AUTH_PASSWORD=a-long-unique-password
+JWT_SECRET=a-random-64-character-secret
+JWT_EXPIRE_MINUTES=480
+```
+
 ## Web UI
 
 The Vite React UI lives in `frontend/`. It can record audio in the browser,
@@ -119,8 +129,8 @@ gcloud run deploy "$SERVICE_NAME" \
   --region "$REGION" \
   --service-account "$SERVICE_ACCOUNT" \
   --allow-unauthenticated \
-  --set-secrets GEMINI_API_KEY=gemini-api-key:latest \
-  --set-env-vars GOOGLE_DRIVE_FOLDER_ID=DRIVE_FOLDER_ID,ALLOWED_ORIGINS=http://localhost:5173,WHISPER_MODEL=small,WHISPER_COMPUTE_TYPE=int8 \
+   --set-secrets GEMINI_API_KEY=gemini-api-key:latest,AUTH_PASSWORD=auth-password:latest,JWT_SECRET=jwt-secret:latest \
+   --set-env-vars AUTH_USERNAME=YOUR_USERNAME,GOOGLE_DRIVE_FOLDER_ID=DRIVE_FOLDER_ID,ALLOWED_ORIGINS=http://localhost:5173,WHISPER_MODEL=small,WHISPER_COMPUTE_TYPE=int8 \
   --memory 2Gi --cpu 2 --timeout 300
 ```
 
@@ -199,7 +209,17 @@ curl http://127.0.0.1:8000/health
 Translate Thai text:
 
 ```bash
+curl -X POST http://127.0.0.1:8000/auth/login \
+  -H 'Content-Type: application/json' \
+  -d '{"username":"YOUR_USERNAME","password":"YOUR_PASSWORD"}'
+```
+
+Use the returned `access_token` as `TOKEN` for every API endpoint other than
+`/health` and `/auth/login`:
+
+```bash
 curl -X POST http://127.0.0.1:8000/translate \
+  -H "Authorization: Bearer $TOKEN" \
   -H 'Content-Type: application/json' \
   -d '{"text":"สวัสดีครับ"}'
 ```
@@ -208,6 +228,7 @@ Transcribe and translate an audio recording:
 
 ```bash
 curl -X POST http://127.0.0.1:8000/translate/audio \
+  -H "Authorization: Bearer $TOKEN" \
   -F 'audio=@/absolute/path/to/recording.m4a'
 ```
 

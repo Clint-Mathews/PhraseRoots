@@ -7,6 +7,16 @@ class TranslationRequest(BaseModel):
     text: str = Field(min_length=1, max_length=12_000)
 
 
+class LoginRequest(BaseModel):
+    username: str = Field(min_length=1, max_length=128)
+    password: str = Field(min_length=1, max_length=256)
+
+
+class TokenResponse(BaseModel):
+    access_token: str
+    token_type: Literal["bearer"] = "bearer"
+
+
 class TranslationContent(BaseModel):
     model_config = ConfigDict(extra="forbid")
 

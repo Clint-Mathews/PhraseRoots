@@ -2,19 +2,23 @@ import os
 from pathlib import Path
 from tempfile import NamedTemporaryFile
 
-from fastapi import FastAPI, File, HTTPException, UploadFile, status
+from fastapi import Depends, FastAPI, File, HTTPException, UploadFile, status
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.concurrency import run_in_threadpool
 
 from app.config import get_settings
+from app.auth import authenticate, verify_token
 from app.models import (
     AudioTranslationResponse,
     DriveRecordingTranslationRequest,
+    LoginRequest,
     RecordingListItem,
     RecordingListResponse,
     RecordingUploadResponse,
     TranslationRequest,
     TranslationResponse,
+    TokenResponse,
 )
 from app.services.drive import (
     DriveUploadError,
@@ -28,13 +32,14 @@ from app.services.translate import TranslationError, translate_to_english
 
 app = FastAPI(title="Thai Learning API")
 settings = get_settings()
+bearer_scheme = HTTPBearer(auto_error=False)
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.origins,
     allow_credentials=False,
     allow_methods=["GET", "POST", "PATCH", "DELETE"],
-    allow_headers=["Content-Type"],
+    allow_headers=["Authorization", "Content-Type"],
 )
 
 
@@ -43,8 +48,25 @@ def health():
     return {"status": "ok", "translation_provider": "gemini"}
 
 
+@app.post("/auth/login", response_model=TokenResponse)
+def login(request: LoginRequest) -> TokenResponse:
+    return TokenResponse(access_token=authenticate(request.username, request.password, settings))
+
+
+def require_user(
+    credentials: HTTPAuthorizationCredentials | None = Depends(bearer_scheme),
+) -> str:
+    if credentials is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Authentication required",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    return verify_token(credentials.credentials, settings)
+
+
 @app.post("/translate", response_model=TranslationResponse)
-def translate(request: TranslationRequest) -> TranslationResponse:
+def translate(request: TranslationRequest, _user: str = Depends(require_user)) -> TranslationResponse:
     try:
         content = translate_to_english(
             request.text, settings.gemini_api_key, settings.gemini_model
@@ -59,7 +81,7 @@ def translate(request: TranslationRequest) -> TranslationResponse:
 
 
 @app.post("/translate/audio", response_model=AudioTranslationResponse)
-async def translate_audio(audio: UploadFile = File(...)) -> AudioTranslationResponse:
+async def translate_audio(audio: UploadFile = File(...), _user: str = Depends(require_user)) -> AudioTranslationResponse:
     filename = audio.filename or "audio"
     suffix = Path(filename).suffix.lower()
     if suffix not in {".m4a", ".mp3", ".wav", ".webm"}:
@@ -122,7 +144,7 @@ async def translate_audio(audio: UploadFile = File(...)) -> AudioTranslationResp
 
 @app.post("/translate/audio/drive", response_model=AudioTranslationResponse)
 async def translate_drive_recording(
-    request: DriveRecordingTranslationRequest,
+    request: DriveRecordingTranslationRequest, _user: str = Depends(require_user),
 ) -> AudioTranslationResponse:
     temp_path: str | None = None
     try:
@@ -179,7 +201,7 @@ async def translate_drive_recording(
 
 
 @app.post("/recordings", response_model=RecordingUploadResponse)
-async def upload_recording_to_drive(audio: UploadFile = File(...)) -> RecordingUploadResponse:
+async def upload_recording_to_drive(audio: UploadFile = File(...), _user: str = Depends(require_user)) -> RecordingUploadResponse:
     filename = audio.filename or "recording.webm"
     suffix = Path(filename).suffix.lower()
     if suffix not in {".m4a", ".mp3", ".wav", ".webm"}:
@@ -234,7 +256,7 @@ async def upload_recording_to_drive(audio: UploadFile = File(...)) -> RecordingU
 
 
 @app.get("/recordings", response_model=RecordingListResponse)
-async def get_recordings() -> RecordingListResponse:
+async def get_recordings(_user: str = Depends(require_user)) -> RecordingListResponse:
     try:
         recordings = await run_in_threadpool(
             list_recordings,

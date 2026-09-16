@@ -14,6 +14,10 @@ class Settings(BaseSettings):
     max_audio_upload_bytes: int = 50 * 1024 * 1024
     whisper_model: str = "small"
     whisper_compute_type: str = "int8"
+    auth_username: str = ""
+    auth_password: str = ""
+    jwt_secret: str = ""
+    jwt_expire_minutes: int = 480
 
     @property
     def origins(self) -> list[str]:
