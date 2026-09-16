@@ -140,6 +140,20 @@ function EmptyState({ icon, title, children }: { icon: "conversation" | "phrases
   return <div className="empty-state"><span className="empty-icon"><Icon name={icon} /></span><h3>{title}</h3><p>{children}</p></div>;
 }
 
+function NetworkStatus() {
+  const [online, setOnline] = useState(() => navigator.onLine);
+  useEffect(() => {
+    const update = () => setOnline(navigator.onLine);
+    window.addEventListener("online", update);
+    window.addEventListener("offline", update);
+    return () => {
+      window.removeEventListener("online", update);
+      window.removeEventListener("offline", update);
+    };
+  }, []);
+  return <span className={`network-status${online ? " online" : ""}`} role="status" title="This device’s network connection"><span aria-hidden="true" />{online ? "ONLINE" : "OFFLINE"}</span>;
+}
+
 const pages: { id: Page; label: string; icon: "conversation" | "mic" | "sparkle" | "phrases" | "library"; title: string; description: string }[] = [
   { id: "live", label: "Live", icon: "conversation", title: "Live conversation", description: "Less lost in translation. More in the moment." },
   { id: "record", label: "Record", icon: "mic", title: "Capture a conversation", description: "Keep the moments. Come back to the meaning." },
@@ -204,7 +218,7 @@ function App() {
         </div>
       </aside>
       <section className="content" id="workspace" tabIndex={-1}>
-        <div className="workspace-topline"><span>Workspace <span>/</span> {currentPage.label}</span><span className="workspace-private"><span /> PERSONAL SPACE</span></div>
+        <div className="workspace-topline"><span>Workspace <span>/</span> {currentPage.label}</span><NetworkStatus /></div>
         <header className="page-header">
           <div>
             <p className="eyebrow">YOUR LANGUAGE, CONNECTED</p>
@@ -1162,7 +1176,7 @@ function Translator({ onError, onLoadingChange, onPhrases }: { onError: (message
             onClick={openAudio}
             title="Translate an audio file or recording"
           >
-            <Icon name="headphones" />Audio
+            <Icon name="headphones" />Audio<span className="tab-indicator" aria-hidden="true" />
           </button>
           <button
             type="button"
@@ -1171,7 +1185,7 @@ function Translator({ onError, onLoadingChange, onPhrases }: { onError: (message
             onClick={() => setMode("text")}
             title="Translate typed or pasted text"
           >
-            <Icon name="phrases" />Text
+            <Icon name="phrases" />Text<span className="tab-indicator" aria-hidden="true" />
           </button>
         </div>
         {mode === "text" ? (
