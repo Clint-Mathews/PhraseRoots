@@ -30,14 +30,14 @@ function Icon({
   name,
 }: {
   name:
-    | "mic"
-    | "arrow"
-    | "library"
-    | "settings"
-    | "sparkle"
-    | "download"
-    | "upload"
-    | "swap"
+     | "mic"
+     | "arrow"
+     | "library"
+     | "sparkle"
+     | "download"
+     | "upload"
+     | "logout"
+     | "swap"
     | "play"
     | "view";
 }) {
@@ -55,12 +55,6 @@ function Icon({
         <path d="M4 22a3 3 0 0 1 3-3h13M8 6h7" />
       </>
     ),
-    settings: (
-      <>
-        <circle cx="12" cy="12" r="3" />
-        <path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1-2 2-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.5v.2h-2.8v-.2a1.7 1.7 0 0 0-1-1.5 1.7 1.7 0 0 0-1.9.3l-.1.1-2-2 .1-.1a1.7 1.7 0 0 0 .3-1.9 1.7 1.7 0 0 0-1.5-1H5.7v-2.8h.2a1.7 1.7 0 0 0 1.5-1 1.7 1.7 0 0 0-.3-1.9L7 8.2l2-2 .1.1a1.7 1.7 0 0 0 1.9.3 1.7 1.7 0 0 0 1-1.5v-.2h2.8v.2a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.9-.3l.1-.1 2 2-.1.1a1.7 1.7 0 0 0-.3 1.9 1.7 1.7 0 0 0 1.5 1h.2V14h-.2a1.7 1.7 0 0 0-1.5 1Z" />
-      </>
-    ),
     sparkle: (
       <path d="m12 2 1.7 6.3L20 10l-6.3 1.7L12 18l-1.7-6.3L4 10l6.3-1.7L12 2Zm7 14 .7 2.3L22 19l-2.3.7L19 22l-.7-2.3L16 19l2.3-.7L19 16Z" />
     ),
@@ -74,6 +68,7 @@ function Icon({
         <path d="M12 16V3m0 0 5 5m-5-5L7 8M4 14v6h16v-6" />
       </>
     ),
+    logout: <path d="M10 5H5v14h5m4-10 4 3-4 3m-7-3h11" />,
     swap: (
       <>
         <path d="M7 7h10l-3-3m3 3-3 3M17 17H7l3 3m-3-3 3-3" />
@@ -96,11 +91,19 @@ function Icon({
 
 function App() {
   const [page, setPage] = useState<Page>("record");
-  const [apiOpen, setApiOpen] = useState(false);
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
   const [authenticated, setAuthenticated] = useState(() =>
     Boolean(localStorage.getItem(TOKEN_KEY)),
   );
-  if (!authenticated) return <Login onSuccess={() => setAuthenticated(true)} />;
+  const showError = (message: string) => setError(message);
+  if (!authenticated)
+    return (
+      <>
+        <Login onSuccess={() => setAuthenticated(true)} onError={showError} />
+        <Toast message={error} onDismiss={() => setError("")} />
+      </>
+    );
   const logout = () => {
     localStorage.removeItem(TOKEN_KEY);
     setAuthenticated(false);
@@ -108,7 +111,7 @@ function App() {
   return (
     <main>
       <aside>
-        <button className="brand" onClick={() => setPage("record")}>
+        <button className="brand" onClick={() => setPage("record")} title="Go to recording">
           <span>PR</span>
           <b>PhraseRoots</b>
         </button>
@@ -116,6 +119,7 @@ function App() {
           <button
             className={page === "record" ? "active" : ""}
             onClick={() => setPage("record")}
+            title="Record a conversation"
           >
             <Icon name="mic" />
             Record
@@ -123,6 +127,7 @@ function App() {
           <button
             className={page === "translate" ? "active" : ""}
             onClick={() => setPage("translate")}
+            title="Translate text or audio"
           >
             <Icon name="sparkle" />
             Translate
@@ -130,24 +135,21 @@ function App() {
           <button
             className={page === "library" ? "active" : ""}
             onClick={() => setPage("library")}
+            title="View recording library"
           >
             <Icon name="library" />
             Library
           </button>
         </nav>
         <div className="aside-bottom">
-          <button onClick={() => setApiOpen(!apiOpen)}>
-            <Icon name="settings" />
-            Connection
-          </button>
           <div className="profile">
             <strong>CS</strong>
             <span>
               <b>Clint</b>
               <small>Personal workspace</small>
             </span>
-            <button className="logout" onClick={logout}>
-              Log out
+            <button className="logout" onClick={logout} aria-label="Log out" title="Log out">
+              <Icon name="logout" />
             </button>
           </div>
         </div>
@@ -164,35 +166,65 @@ function App() {
                   : "Recording library"}
             </h1>
           </div>
-          <span className="status-dot">API ready</span>
+          <span className="status-dot" title="PhraseRoots is ready to use">Online</span>
         </header>
-        {apiOpen && (
-          <div className="connection">
-            Backend endpoint <code>{API_URL}</code>{" "}
-            <span>Set `VITE_API_URL` before deploying to Vercel.</span>
-          </div>
-        )}
+        <div className={`top-loader${loading ? " active" : ""}`} aria-hidden="true">
+          <span />
+        </div>
         {page === "record" ? (
-          <Recorder onOpenLibrary={() => setPage("library")} />
+          <Recorder
+            onOpenLibrary={() => setPage("library")}
+            onError={showError}
+            onLoadingChange={setLoading}
+          />
         ) : page === "translate" ? (
-          <Translator />
+          <Translator onError={showError} onLoadingChange={setLoading} />
         ) : (
-          <Library />
+          <Library onError={showError} onLoadingChange={setLoading} />
         )}
       </section>
+      <Toast message={error} onDismiss={() => setError("")} />
     </main>
   );
 }
 
-function Login({ onSuccess }: { onSuccess: () => void }) {
+function Toast({ message, onDismiss }: { message: string; onDismiss: () => void }) {
+  const [displayedMessage, setDisplayedMessage] = useState(message);
+  const [visible, setVisible] = useState(Boolean(message));
+  useEffect(() => {
+    if (!message) return;
+    setDisplayedMessage(message);
+    setVisible(true);
+    const timeout = window.setTimeout(() => setVisible(false), 5000);
+    return () => window.clearTimeout(timeout);
+  }, [message]);
+  if (!displayedMessage) return null;
+  return (
+    <div
+      className={`toast${visible ? " visible" : ""}`}
+      role="alert"
+      onTransitionEnd={(event) => {
+        if (event.propertyName === "opacity" && !visible) {
+          setDisplayedMessage("");
+          onDismiss();
+        }
+      }}
+    >
+      <span>{displayedMessage}</span>
+      <button type="button" onClick={() => setVisible(false)} aria-label="Dismiss error" title="Dismiss error">
+        Close
+      </button>
+    </div>
+  );
+}
+
+function Login({ onSuccess, onError }: { onSuccess: () => void; onError: (message: string) => void }) {
   const [username, setUsername] = useState(""),
     [password, setPassword] = useState(""),
-    [working, setWorking] = useState(false),
-    [error, setError] = useState("");
+    [working, setWorking] = useState(false);
   const submit = async (event: FormEvent) => {
     event.preventDefault();
     setWorking(true);
-    setError("");
     try {
       const response = await fetch(`${API_URL}/auth/login`, {
         method: "POST",
@@ -204,7 +236,7 @@ function Login({ onSuccess }: { onSuccess: () => void }) {
       localStorage.setItem(TOKEN_KEY, data.access_token);
       onSuccess();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Unable to sign in");
+      onError(e instanceof Error ? e.message : "Unable to sign in");
     } finally {
       setWorking(false);
     }
@@ -235,16 +267,15 @@ function Login({ onSuccess }: { onSuccess: () => void }) {
             required
           />
         </label>
-        <button disabled={working}>
+        <button disabled={working} title="Sign in to PhraseRoots">
           {working ? "Signing in..." : "Sign in"}
         </button>
-        {error && <p className="error">{error}</p>}
       </form>
     </main>
   );
 }
 
-function Recorder({ onOpenLibrary }: { onOpenLibrary: () => void }) {
+function Recorder({ onOpenLibrary, onError, onLoadingChange }: { onOpenLibrary: () => void; onError: (message: string) => void; onLoadingChange: (loading: boolean) => void }) {
   const recorder = useRef<MediaRecorder | null>(null);
   const [recording, setRecording] = useState(false),
     [seconds, setSeconds] = useState(0),
@@ -252,8 +283,7 @@ function Recorder({ onOpenLibrary }: { onOpenLibrary: () => void }) {
     [saving, setSaving] = useState("Save in my Google Drive"),
     [recordingName, setRecordingName] = useState(""),
     [uploading, setUploading] = useState(false),
-    [savedLink, setSavedLink] = useState(""),
-    [error, setError] = useState("");
+    [savedLink, setSavedLink] = useState("");
   useEffect(() => {
     if (!recording) return;
     const id = setInterval(() => setSeconds((s) => s + 1), 1000);
@@ -280,7 +310,7 @@ function Recorder({ onOpenLibrary }: { onOpenLibrary: () => void }) {
       r.start();
       setRecording(true);
     } catch {
-      alert("Microphone access is needed to record.");
+      onError("Microphone access is needed to record.");
     }
   };
   const filename = () => {
@@ -299,7 +329,7 @@ function Recorder({ onOpenLibrary }: { onOpenLibrary: () => void }) {
   const saveToDrive = async () => {
     if (!audio) return;
     setUploading(true);
-    setError("");
+    onLoadingChange(true);
     try {
       const form = new FormData();
       form.append(
@@ -317,9 +347,10 @@ function Recorder({ onOpenLibrary }: { onOpenLibrary: () => void }) {
       const data = await response.json();
       setSavedLink(data.web_view_link);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Could not save recording");
+      onError(e instanceof Error ? e.message : "Could not save recording");
     } finally {
       setUploading(false);
+      onLoadingChange(false);
     }
   };
   const time = `${String(Math.floor(seconds / 60)).padStart(2, "0")}:${String(seconds % 60).padStart(2, "0")}`;
@@ -344,6 +375,7 @@ function Recorder({ onOpenLibrary }: { onOpenLibrary: () => void }) {
         <button
           className={"record-button " + (recording ? "stop" : "")}
           onClick={toggle}
+          title={recording ? "Stop recording" : "Start recording"}
         >
           <Icon name="mic" />
           <span>
@@ -379,6 +411,7 @@ function Recorder({ onOpenLibrary }: { onOpenLibrary: () => void }) {
                 key={option}
                 onClick={() => setSaving(option)}
                 className={saving === option ? "selected" : ""}
+                title={`Choose ${option}`}
               >
                 <span className="radio" />
                 <b>{option}</b>
@@ -397,6 +430,7 @@ function Recorder({ onOpenLibrary }: { onOpenLibrary: () => void }) {
           onClick={
             saving === "Download to this device" ? download : saveToDrive
           }
+          title={saving === "Download to this device" ? "Download recording" : "Save recording to Google Drive"}
         >
           <Icon
             name={saving === "Download to this device" ? "download" : "upload"}
@@ -408,22 +442,21 @@ function Recorder({ onOpenLibrary }: { onOpenLibrary: () => void }) {
               : "Save to Google Drive"}
         </button>
         {savedLink && (
-          <button className="library-button" onClick={onOpenLibrary}>
+          <button className="library-button" onClick={onOpenLibrary} title="Open recording library">
             <Icon name="library" />
             View recordings in Library
           </button>
         )}
-        {error && <p className="error">{error}</p>}
       </section>
     </div>
   );
 }
 
-function Library() {
+function Library({ onError, onLoadingChange }: { onError: (message: string) => void; onLoadingChange: (loading: boolean) => void }) {
   const [recordings, setRecordings] = useState<Recording[]>([]),
-    [loading, setLoading] = useState(true),
-    [error, setError] = useState("");
+    [loading, setLoading] = useState(true);
   useEffect(() => {
+    onLoadingChange(true);
     apiFetch('/recordings')
       .then(async (response) => {
         if (!response.ok)
@@ -433,13 +466,13 @@ function Library() {
         return response.json();
       })
       .then((data) => setRecordings(data.recordings))
-      .catch((e) =>
-        setError(e instanceof Error ? e.message : "Could not load recordings"),
-      )
-      .finally(() => setLoading(false));
+      .catch((e) => onError(e instanceof Error ? e.message : "Could not load recordings"))
+      .finally(() => {
+        setLoading(false);
+        onLoadingChange(false);
+      });
   }, []);
   if (loading) return <p className="library-state">Loading recordings...</p>;
-  if (error) return <p className="error">{error}</p>;
   if (!recordings.length)
     return (
       <p className="library-state">No recordings in this Drive folder yet.</p>
@@ -468,7 +501,7 @@ function Library() {
   );
 }
 
-function Translator() {
+function Translator({ onError, onLoadingChange }: { onError: (message: string) => void; onLoadingChange: (loading: boolean) => void }) {
   const [mode, setMode] = useState<"text" | "audio">("text"),
     [source, setSource] = useState("Thai"),
     [target, setTarget] = useState("English"),
@@ -477,8 +510,7 @@ function Translator() {
     [recordings, setRecordings] = useState<Recording[]>([]),
     [selectedRecording, setSelectedRecording] = useState(""),
     [result, setResult] = useState<Result | null>(null),
-    [working, setWorking] = useState(false),
-    [error, setError] = useState("");
+    [working, setWorking] = useState(false);
   const swap = () => {
     setSource(target);
     setTarget(source);
@@ -487,7 +519,7 @@ function Translator() {
     event.preventDefault();
     if (!text.trim()) return;
     setWorking(true);
-    setError("");
+    onLoadingChange(true);
     try {
       const response = await apiFetch('/translate', {
         method: "POST",
@@ -500,15 +532,16 @@ function Translator() {
         );
       setResult(await response.json());
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Something went wrong");
+      onError(e instanceof Error ? e.message : "Something went wrong");
     } finally {
       setWorking(false);
+      onLoadingChange(false);
     }
   };
   const openAudio = () => {
     setMode("audio");
-    setError("");
-    if (!recordings.length)
+    if (!recordings.length) {
+      onLoadingChange(true);
       apiFetch('/recordings')
         .then(async (response) => {
           if (!response.ok)
@@ -518,17 +551,15 @@ function Translator() {
           return response.json();
         })
         .then((data) => setRecordings(data.recordings))
-        .catch((e) =>
-          setError(
-            e instanceof Error ? e.message : "Could not load recordings",
-          ),
-        );
+        .catch((e) => onError(e instanceof Error ? e.message : "Could not load recordings"))
+        .finally(() => onLoadingChange(false));
+    }
   };
   const translateAudio = async (event: FormEvent) => {
     event.preventDefault();
     if (!audio && !selectedRecording) return;
     setWorking(true);
-    setError("");
+    onLoadingChange(true);
     try {
       const response = audio
         ? await apiFetch('/translate/audio', {
@@ -550,9 +581,10 @@ function Translator() {
         );
       setResult(await response.json());
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Something went wrong");
+      onError(e instanceof Error ? e.message : "Something went wrong");
     } finally {
       setWorking(false);
+      onLoadingChange(false);
     }
   };
   return (
@@ -563,6 +595,7 @@ function Translator() {
             type="button"
             className={mode === "text" ? "selected" : ""}
             onClick={() => setMode("text")}
+            title="Translate typed or pasted text"
           >
             Text
           </button>
@@ -570,6 +603,7 @@ function Translator() {
             type="button"
             className={mode === "audio" ? "selected" : ""}
             onClick={openAudio}
+            title="Translate an audio file or recording"
           >
             Audio
           </button>
@@ -587,7 +621,7 @@ function Translator() {
                   <option>English</option>
                 </select>
               </label>
-              <button type="button" className="swap" onClick={swap}>
+              <button type="button" className="swap" onClick={swap} title="Swap languages">
                 <Icon name="swap" />
               </button>
               <label>
@@ -646,6 +680,7 @@ function Translator() {
           disabled={
             working || (mode === "audio" && !audio && !selectedRecording)
           }
+          title={mode === "audio" ? "Translate selected audio" : "Translate conversation"}
         >
           {working ? (
             "Translating..."
@@ -656,7 +691,6 @@ function Translator() {
             </>
           )}
         </button>
-        {error && <p className="error">{error}</p>}
       </form>
       <section className="result-section">
         <div className="result-title">
@@ -664,7 +698,7 @@ function Translator() {
             <p className="eyebrow">TRANSLATION NOTES</p>
             <h2>Side-by-side meaning</h2>
           </div>
-          <button className="icon-button">
+          <button className="icon-button" title="Download translation">
             <Icon name="download" />
           </button>
         </div>
@@ -675,7 +709,7 @@ function Translator() {
               {result?.source_text ||
                 "วันนี้อากาศดีมาก เราไปเดินเล่นที่สวนกันไหม"}
             </p>
-            <button>
+            <button title="Listen to Thai text">
               <Icon name="play" /> Listen
             </button>
           </article>
@@ -685,7 +719,7 @@ function Translator() {
               {result?.translation ||
                 "The weather is very nice today. Shall we go for a walk in the park?"}
             </p>
-            <button>
+            <button title="Listen to English text">
               <Icon name="play" /> Listen
             </button>
           </article>

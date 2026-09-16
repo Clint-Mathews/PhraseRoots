@@ -3,12 +3,40 @@
 .login-page { align-items: center; justify-content: center; padding: 24px; }
 .login-card { width: min(100%, 390px); padding: 40px; background: #fffdf8; border: 1px solid #ddd8cd; border-radius: 12px; box-shadow: 0 18px 45px #203d3614; }
 .login-mark { display: grid; place-items: center; width: 38px; height: 38px; margin-bottom: 25px; border-radius: 50%; background: #203d36; color: #f7d78b; font: 500 11px "DM Mono"; }
-.login-card > p:not(.eyebrow):not(.error) { margin: 12px 0 25px; color: #68726d; }
+.login-card > p:not(.eyebrow) { margin: 12px 0 25px; color: #68726d; }
 .login-card label { display: grid; gap: 7px; margin: 15px 0; color: #68726d; font: 500 10px "DM Mono"; letter-spacing: .08em; text-transform: uppercase; }
 .login-card input { border: 1px solid #d5d0c4; border-radius: 7px; padding: 11px 12px; background: #fff; }
 .login-card > button { width: 100%; margin-top: 10px; border: 0; border-radius: 7px; padding: 12px; background: #203d36; color: #fffdf8; font-weight: 600; }
-.logout { margin-left: auto; border: 0; background: transparent; color: #68726d; font-size: 11px; }
-.login-card .error { margin-bottom: 0; }
+.logout {
+  margin-left: auto;
+  border: 1px solid #d8c9bd;
+  border-radius: 5px;
+  width: 31px;
+  height: 31px;
+  padding: 0;
+  background: #faf6ee;
+  color: #875244;
+  font: 500 10px "DM Mono";
+  letter-spacing: 0.03em;
+  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+.logout:hover {
+  border-color: #b76e5a;
+  background: #f8e8df;
+  color: #6f382d;
+}
+.logout:focus-visible {
+  outline: 2px solid #b76e5a;
+  outline-offset: 2px;
+}
+.logout svg {
+  width: 13px;
+  height: 13px;
+  margin: 2px 0 0;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+}
 
 .recording-name {
   display: grid;
@@ -165,6 +193,38 @@ select {
 button {
   cursor: pointer;
 }
+button[title] {
+  position: relative;
+}
+button[title]::after {
+  position: absolute;
+  z-index: 20;
+  bottom: calc(100% + 8px);
+  left: 50%;
+  width: max-content;
+  max-width: min(260px, 80vw);
+  padding: 7px 9px;
+  border-radius: 5px;
+  background: #203d36;
+  box-shadow: 0 6px 16px #203d3630;
+  color: #fffdf8;
+  content: attr(title);
+  font: 500 10px/1.3 "DM Sans", sans-serif;
+  letter-spacing: 0;
+  opacity: 0;
+  pointer-events: none;
+  text-align: center;
+  text-transform: none;
+  transform: translate(-50%, 4px);
+  transition: opacity 0.15s ease, transform 0.15s ease;
+  visibility: hidden;
+}
+button[title]:hover::after,
+button[title]:focus-visible::after {
+  opacity: 1;
+  transform: translate(-50%, 0);
+  visibility: visible;
+}
 main {
   min-height: 100vh;
   display: flex;
@@ -278,6 +338,33 @@ header {
   justify-content: space-between;
   align-items: flex-start;
   margin-bottom: 42px;
+}
+.top-loader {
+  height: 3px;
+  margin: -29px 0 26px;
+  overflow: hidden;
+  border-radius: 3px;
+  background: transparent;
+  opacity: 0;
+  transition: opacity 0.28s ease;
+}
+.top-loader.active {
+  background: #dce6d8;
+  opacity: 1;
+}
+.top-loader span {
+  display: block;
+  width: 38%;
+  height: 100%;
+  border-radius: inherit;
+  background: #3f735c;
+  transform: translateX(-110%);
+}
+.top-loader.active span {
+  animation: loader-slide 1.1s ease-in-out infinite;
+}
+@keyframes loader-slide {
+  to { transform: translateX(370%); }
 }
 .eyebrow {
   font: 500 10px "DM Mono";
@@ -548,11 +635,43 @@ h1 {
   margin: 13px 0 34px;
   padding: 12px 18px;
 }
-.error {
-  color: #ac4f42;
+.toast {
+  position: fixed;
+  z-index: 10;
+  top: 18px;
+  left: 50%;
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  width: min(calc(100% - 32px), 480px);
+  padding: 12px 14px 12px 16px;
+  border: 1px solid #d89b8d;
+  border-radius: 8px;
+  background: #fff7f3;
+  box-shadow: 0 12px 30px #55342a26;
+  color: #7d342a;
   font-size: 13px;
-  margin-top: -24px;
+  opacity: 0;
+  transform: translate(-50%, -10px);
+  pointer-events: none;
+  transition: opacity 0.2s ease, transform 0.2s ease;
 }
+.toast.visible {
+  opacity: 1;
+  transform: translate(-50%, 0);
+  pointer-events: auto;
+}
+.toast span { flex: 1; }
+.toast button {
+  border: 0;
+  border-radius: 4px;
+  padding: 4px 6px;
+  background: transparent;
+  color: inherit;
+  font: 500 10px "DM Mono";
+  text-transform: uppercase;
+}
+.toast button:hover { background: #f1dcd5; }
 .result-section {
   border-top: 1px solid #ded9cf;
   padding-top: 28px;
@@ -671,6 +790,11 @@ h1 {
     width: 100%;
     padding: 34px 20px;
   }
+  .top-loader {
+    margin-top: -21px;
+    margin-bottom: 18px;
+  }
+  .toast { top: 74px; }
   h1 {
     font-size: 36px;
   }
