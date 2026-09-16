@@ -2,7 +2,7 @@ import { FormEvent, useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import "./style.css";
 
-type Page = "record" | "translate" | "library";
+type Page = "record" | "live" | "phrases" | "translate" | "library";
 type Result = {
   source_text: string;
   source_language: "Thai" | "English";
@@ -18,6 +18,13 @@ type Recording = {
   created_time: string;
   web_view_link: string;
 };
+type LiveSegment = {
+  timestamp: number;
+  source_text: string;
+  translation: string;
+  romanization: string;
+};
+type Phrase = { text: string; count: number };
 
 const API_URL = import.meta.env.VITE_API_URL || "http://127.0.0.1:8000";
 const TOKEN_KEY = "phraseroots.accessToken";
@@ -45,8 +52,10 @@ function Icon({
      | "upload"
      | "logout"
      | "swap"
-    | "play"
-    | "view";
+     | "play"
+     | "view"
+     | "conversation"
+     | "phrases";
 }) {
   const paths = {
     mic: (
@@ -88,6 +97,18 @@ function Icon({
         <circle cx="12" cy="12" r="2.5" />
       </>
     ),
+    conversation: (
+      <>
+        <path d="M4 5h16v11H8l-4 3V5Z" />
+        <path d="M8 10h8M8 13h5" />
+      </>
+    ),
+    phrases: (
+      <>
+        <path d="M5 4h14v16H5z" />
+        <path d="M8 8h8M8 12h8M8 16h5" />
+      </>
+    ),
   };
   return (
     <svg viewBox="0 0 24 24" aria-hidden="true">
@@ -100,6 +121,7 @@ function App() {
   const [page, setPage] = useState<Page>("record");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [phrases, setPhrases] = useState<Phrase[]>([]);
   const [authenticated, setAuthenticated] = useState(() =>
     Boolean(localStorage.getItem(TOKEN_KEY)),
   );
@@ -132,12 +154,28 @@ function App() {
             Record
           </button>
           <button
+            className={page === "live" ? "active" : ""}
+            onClick={() => setPage("live")}
+            title="Translate a conversation as it happens"
+          >
+            <Icon name="conversation" />
+            Live
+          </button>
+          <button
             className={page === "translate" ? "active" : ""}
             onClick={() => setPage("translate")}
             title="Translate text or audio"
           >
             <Icon name="sparkle" />
             Translate
+          </button>
+          <button
+            className={page === "phrases" ? "active" : ""}
+            onClick={() => setPage("phrases")}
+            title="View repeated conversation phrases"
+          >
+            <Icon name="phrases" />
+            Phrases
           </button>
           <button
             className={page === "library" ? "active" : ""}
@@ -168,6 +206,10 @@ function App() {
             <h1>
               {page === "record"
                 ? "Capture a conversation"
+                : page === "live"
+                  ? "Live conversation"
+                  : page === "phrases"
+                    ? "Conversation phrases"
                 : page === "translate"
                   ? "Translate with context"
                   : "Recording library"}
@@ -184,6 +226,16 @@ function App() {
             onError={showError}
             onLoadingChange={setLoading}
           />
+        ) : page === "live" ? (
+          <LiveConversation
+            onError={showError}
+            onLoadingChange={setLoading}
+            onPhrases={(nextPhrases) => {
+              setPhrases(nextPhrases);
+            }}
+          />
+        ) : page === "phrases" ? (
+          <PhraseViewer phrases={phrases} onError={showError} onLoadingChange={setLoading} />
         ) : page === "translate" ? (
           <Translator onError={showError} onLoadingChange={setLoading} />
         ) : (
@@ -456,6 +508,277 @@ function Recorder({ onOpenLibrary, onError, onLoadingChange }: { onOpenLibrary: 
         )}
       </section>
     </div>
+  );
+}
+
+function LiveConversation({ onError, onLoadingChange, onPhrases }: { onError: (message: string) => void; onLoadingChange: (loading: boolean) => void; onPhrases: (phrases: Phrase[]) => void }) {
+  const socket = useRef<WebSocket | null>(null);
+  const recorder = useRef<MediaRecorder | null>(null);
+  const archiveRecorder = useRef<MediaRecorder | null>(null);
+  const archiveChunks = useRef<BlobPart[]>([]);
+  const stream = useRef<MediaStream | null>(null);
+  const timer = useRef<number | null>(null);
+  const active = useRef(false);
+  const ending = useRef(false);
+  const segmentsRef = useRef<LiveSegment[]>([]);
+  const [running, setRunning] = useState(false);
+  const [paused, setPaused] = useState(false);
+  const [segments, setSegments] = useState<LiveSegment[]>([]);
+  const [pending, setPending] = useState(0);
+  const [seconds, setSeconds] = useState(0);
+  const [finished, setFinished] = useState(false);
+  const [archiveAudio, setArchiveAudio] = useState<Blob | null>(null);
+  const [recordingName, setRecordingName] = useState("");
+  const [saving, setSaving] = useState(false);
+  // A 12-second chunk keeps live translation responsive without exhausting a
+  // low per-minute translation quota during a longer conversation.
+  const chunkDuration = 12_000;
+
+  useEffect(() => {
+    if (!running || paused) return;
+    const interval = window.setInterval(() => setSeconds((value) => value + 1), 1_000);
+    return () => window.clearInterval(interval);
+  }, [paused, running]);
+
+  const analyze = async () => {
+    const transcript = segmentsRef.current.map((segment) => segment.source_text).join(" ").trim();
+    if (!transcript) {
+      onError("No transcribed conversation is available for phrase analysis.");
+      return;
+    }
+    onLoadingChange(true);
+    try {
+      const response = await apiFetch("/phrases/analyze", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ transcript }),
+      });
+      if (!response.ok) throw new Error((await response.json()).detail || "Could not analyze phrases");
+      onPhrases((await response.json()).phrases);
+    } catch (error) {
+      onError(error instanceof Error ? error.message : "Could not analyze phrases");
+    } finally {
+      onLoadingChange(false);
+    }
+  };
+  const startChunk = () => {
+    if (!stream.current || !active.current) return;
+    const options = MediaRecorder.isTypeSupported("audio/webm;codecs=opus") ? { mimeType: "audio/webm;codecs=opus" } : undefined;
+    const mediaRecorder = new MediaRecorder(stream.current, options);
+    const chunks: BlobPart[] = [];
+    mediaRecorder.ondataavailable = (event) => {
+      if (event.data.size) chunks.push(event.data);
+    };
+    mediaRecorder.onstop = () => {
+      const audio = new Blob(chunks, { type: mediaRecorder.mimeType });
+      if (audio.size && socket.current?.readyState === WebSocket.OPEN) {
+        setPending((value) => value + 1);
+        socket.current.send(JSON.stringify({ type: "chunk", timestamp: Date.now(), format: mediaRecorder.mimeType.includes("mp4") ? "m4a" : "webm" }));
+        socket.current.send(audio);
+      }
+      if (active.current) startChunk();
+      else if (ending.current && socket.current?.readyState === WebSocket.OPEN) socket.current.send(JSON.stringify({ type: "finish" }));
+    };
+    recorder.current = mediaRecorder;
+    mediaRecorder.start();
+    timer.current = window.setTimeout(() => mediaRecorder.stop(), chunkDuration);
+  };
+  const start = async () => {
+    try {
+      const mediaStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const websocketUrl = `${API_URL.replace(/^http/, "ws")}/live-conversation?token=${encodeURIComponent(localStorage.getItem(TOKEN_KEY) || "")}`;
+      const liveSocket = new WebSocket(websocketUrl);
+      liveSocket.onmessage = (event) => {
+        const message = JSON.parse(event.data);
+        if (message.type === "segment") {
+          const next = [...segmentsRef.current, message as LiveSegment];
+          segmentsRef.current = next;
+          setSegments(next);
+          setPending((value) => Math.max(0, value - 1));
+        }
+        if (message.type === "error") {
+          setPending((value) => Math.max(0, value - 1));
+          onError(message.message);
+        }
+        if (message.type === "finished") {
+          liveSocket.close();
+          analyze();
+          setFinished(true);
+        }
+      };
+      liveSocket.onerror = () => onError("Live connection was interrupted.");
+      liveSocket.onopen = () => {
+        stream.current = mediaStream;
+        socket.current = liveSocket;
+        archiveChunks.current = [];
+        const options = MediaRecorder.isTypeSupported("audio/webm;codecs=opus") ? { mimeType: "audio/webm;codecs=opus" } : undefined;
+        const fullRecording = new MediaRecorder(mediaStream, options);
+        fullRecording.ondataavailable = (event) => {
+          if (event.data.size) archiveChunks.current.push(event.data);
+        };
+        fullRecording.onstop = () => setArchiveAudio(new Blob(archiveChunks.current, { type: fullRecording.mimeType }));
+        archiveRecorder.current = fullRecording;
+        fullRecording.start();
+        active.current = true;
+        ending.current = false;
+        segmentsRef.current = [];
+        setSegments([]);
+        setPending(0);
+        setSeconds(0);
+        setFinished(false);
+        setArchiveAudio(null);
+        setPaused(false);
+        setRunning(true);
+        startChunk();
+      };
+    } catch {
+      onError("Microphone access is needed for live translation.");
+    }
+  };
+  const pause = () => {
+    active.current = false;
+    setPaused(true);
+    if (timer.current) window.clearTimeout(timer.current);
+    if (recorder.current?.state === "recording") recorder.current.stop();
+    if (archiveRecorder.current?.state === "recording") archiveRecorder.current.pause();
+  };
+  const resume = () => {
+    if (socket.current?.readyState !== WebSocket.OPEN) {
+      onError("The live connection is no longer available. Start a new conversation.");
+      return;
+    }
+    if (archiveRecorder.current?.state === "paused") archiveRecorder.current.resume();
+    active.current = true;
+    setPaused(false);
+    startChunk();
+  };
+  const stop = () => {
+    active.current = false;
+    ending.current = true;
+    setRunning(false);
+    setPaused(false);
+    if (timer.current) window.clearTimeout(timer.current);
+    if (recorder.current?.state === "recording") recorder.current.stop();
+    else socket.current?.send(JSON.stringify({ type: "finish" }));
+    if (archiveRecorder.current?.state === "recording" || archiveRecorder.current?.state === "paused") archiveRecorder.current.stop();
+    stream.current?.getTracks().forEach((track) => track.stop());
+  };
+  const saveRecording = async () => {
+    if (!archiveAudio) return;
+    setSaving(true);
+    onLoadingChange(true);
+    try {
+      const name = recordingName.trim() || `Live conversation ${new Date().toLocaleString().replaceAll("/", "-").replaceAll(":", "-")}`;
+      const form = new FormData();
+      const extension = archiveAudio.type.includes("mp4") ? "m4a" : "webm";
+      form.append("audio", new File([archiveAudio], `${name}.${extension}`, { type: archiveAudio.type }));
+      const response = await apiFetch("/recordings", { method: "POST", body: form });
+      if (!response.ok) throw new Error((await response.json()).detail || "Could not save recording");
+      setArchiveAudio(null);
+      setFinished(false);
+    } catch (error) {
+      onError(error instanceof Error ? error.message : "Could not save recording");
+    } finally {
+      setSaving(false);
+      onLoadingChange(false);
+    }
+  };
+  useEffect(() => () => {
+    active.current = false;
+    ending.current = true;
+    if (timer.current) window.clearTimeout(timer.current);
+    recorder.current?.stop();
+    archiveRecorder.current?.stop();
+    socket.current?.close();
+    stream.current?.getTracks().forEach((track) => track.stop());
+  }, []);
+  const time = `${String(Math.floor(seconds / 60)).padStart(2, "0")}:${String(seconds % 60).padStart(2, "0")}`;
+  const status = running
+    ? paused
+      ? "Paused - microphone is off"
+      : pending
+        ? `Listening - ${pending} section${pending === 1 ? "" : "s"} translating`
+        : "Listening for speech"
+    : finished
+      ? "Conversation complete"
+      : "Ready to start";
+  return (
+    <section className="live-layout">
+      <div className="live-controls">
+        <div>
+          <p className="eyebrow">{running ? paused ? "LISTENING PAUSED" : "LISTENING AND TRANSLATING" : "READY FOR A LIVE CONVERSATION"}</p>
+          <h2>{running ? paused ? "Microphone capture is paused. Resume when you are ready." : "Translation appears after each spoken section." : "Speak naturally. Short pauses create each translation."}</h2>
+          <div className="live-status" aria-live="polite"><span className={running && !paused ? "active" : ""} /><b>{status}</b><time>{time}</time></div>
+        </div>
+        <div className="live-actions">
+          {running && <button className="pause-live" onClick={paused ? resume : pause}>{paused ? "Resume listening" : "Pause listening"}</button>}
+          <button className={`live-button${running ? " stop" : ""}`} onClick={running ? stop : start}>
+            <Icon name="mic" /> {running ? "End conversation" : "Start live translation"}
+          </button>
+        </div>
+      </div>
+      <div className={`live-activity${running && !paused ? " listening" : ""}`} aria-hidden="true">
+        {Array.from({ length: 25 }, (_, index) => <i key={index} style={{ animationDelay: `${index * 45}ms` }} />)}
+      </div>
+      <div className="live-stream" aria-live="polite">
+        {!segments.length && <p className="live-empty">{running ? "Listening for the first phrase..." : "Your translated conversation will appear here."}</p>}
+        {segments.map((segment, index) => (
+          <article key={`${segment.timestamp}-${index}`}>
+            <time>{new Date(segment.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</time>
+            <p className="live-thai">{segment.source_text}</p>
+            <p className="live-romanization">{segment.romanization}</p>
+            <p className="live-translation">{segment.translation}</p>
+          </article>
+        ))}
+        {pending > 0 && <p className="live-pending">Translating {pending} spoken section{pending === 1 ? "" : "s"}...</p>}
+      </div>
+      {finished && archiveAudio && (
+        <div className="live-save-prompt">
+          <div><p className="eyebrow">LIVE TRANSCRIPTION COMPLETE</p><h2>Save this audio recording?</h2><p>Your transcript and phrase analysis are ready. Save the original audio to access it in the Library.</p></div>
+          <label>Recording name<input value={recordingName} onChange={(event) => setRecordingName(event.target.value)} placeholder="Live conversation" /></label>
+          <div><button className="discard-recording" onClick={() => { setArchiveAudio(null); setFinished(false); }}>Discard audio</button><button className="save-live-recording" disabled={saving} onClick={saveRecording}>{saving ? "Saving..." : "Save to recordings"}</button></div>
+        </div>
+      )}
+    </section>
+  );
+}
+
+function PhraseViewer({ phrases, onError, onLoadingChange }: { phrases: Phrase[]; onError: (message: string) => void; onLoadingChange: (loading: boolean) => void }) {
+  const [selected, setSelected] = useState<Phrase | null>(null);
+  const [meaning, setMeaning] = useState<Result | null>(null);
+  const explain = async (phrase: Phrase) => {
+    setSelected(phrase);
+    setMeaning(null);
+    onLoadingChange(true);
+    try {
+      const response = await apiFetch("/translate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text: phrase.text, source_language: "Thai", target_language: "English" }),
+      });
+      if (!response.ok) throw new Error((await response.json()).detail || "Could not explain phrase");
+      setMeaning(await response.json());
+    } catch (error) {
+      onError(error instanceof Error ? error.message : "Could not explain phrase");
+    } finally {
+      onLoadingChange(false);
+    }
+  };
+  if (!phrases.length) return <p className="library-state">Finish a live conversation with repeated words or phrases to view them here.</p>;
+  return (
+    <section className="phrase-layout">
+      <div className="phrase-list">
+        <p className="eyebrow">REPEATED IN THIS CONVERSATION</p>
+        {phrases.map((phrase) => (
+          <button key={phrase.text} className={selected?.text === phrase.text ? "selected" : ""} onClick={() => explain(phrase)}>
+            <b>{phrase.text}</b><span>{phrase.count} times</span>
+          </button>
+        ))}
+      </div>
+      <article className="phrase-detail">
+        {selected ? <><p className="eyebrow">PHRASE EXPLANATION</p><h2>{selected.text}</h2>{meaning ? <><p className="phrase-meaning">{meaning.translation}</p><p className="live-romanization">{meaning.romanization}</p>{meaning.notes.map((note) => <p className="phrase-note" key={note}>{note}</p>)}</> : <p>Selecting phrase explanation...</p>}</> : <p>Select a repeated word or phrase to translate and explain it.</p>}
+      </article>
+    </section>
   );
 }
 

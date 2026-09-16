@@ -28,11 +28,20 @@ def transcribe_thai(
             str(audio_path),
             language="th",
             task="transcribe",
+            beam_size=5,
+            temperature=0,
+            condition_on_previous_text=False,
+            vad_filter=True,
+            vad_parameters={"min_silence_duration_ms": 500},
         )
     except Exception as exc:
         raise TranscriptionError("The audio could not be transcribed") from exc
 
-    text = "".join(segment.text for segment in segments).strip()
+    segment_text = []
+    for segment in segments:
+        segment_text.append(segment.text)
+
+    text = "".join(segment_text).strip()
     if not text:
         raise TranscriptionError("No Thai speech was detected in the audio")
     return text

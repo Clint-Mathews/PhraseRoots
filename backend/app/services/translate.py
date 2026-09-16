@@ -1,4 +1,5 @@
 import json
+import time
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
@@ -32,52 +33,70 @@ def translate_text(
     source_language: str,
     target_language: str,
     api_key: str,
-    model: str = "gemini-3.6-flash",
+    model: str = "qwen/qwen3-30b-a3b-instruct-2507",
 ) -> TranslationContent:
     text = text.strip()
     api_key = api_key.strip()
     if not text:
         raise TranslationError("Thai text is required")
     if not api_key:
-        raise TranslationError("GEMINI_API_KEY is not configured")
+        raise TranslationError("OPENROUTER_API_KEY is not configured")
 
     payload = {
-        "systemInstruction": {"parts": [{"text": TRANSLATOR_INSTRUCTIONS}]},
-        "contents": [
+        "model": model,
+        "messages": [
+            {"role": "system", "content": TRANSLATOR_INSTRUCTIONS},
             {
                 "role": "user",
-                "parts": [
-                    {
-                        "text": (
-                            f"Source language: {source_language}\n"
-                            f"Target language: {target_language}\n"
-                            f"Text: {text}"
-                        )
-                    }
-                ],
+                "content": (
+                    f"Source language: {source_language}\n"
+                    f"Target language: {target_language}\n"
+                    f"Text: {text}"
+                ),
             }
         ],
-        "generationConfig": {
-            "responseMimeType": "application/json",
-            "responseJsonSchema": TranslationContent.model_json_schema(),
+        "temperature": 0,
+        "response_format": {
+            "type": "json_schema",
+            "json_schema": {
+                "name": "translation",
+                "strict": True,
+                "schema": TranslationContent.model_json_schema(),
+            },
         },
     }
+    request = Request(
+        "https://openrouter.ai/api/v1/chat/completions",
+        data=json.dumps(payload).encode(),
+        headers={"Content-Type": "application/json", "Authorization": f"Bearer {api_key}"},
+        method="POST",
+    )
     try:
-        request = Request(
-            f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent",
-            data=json.dumps(payload).encode(),
-            headers={"Content-Type": "application/json", "X-goog-api-key": api_key},
-            method="POST",
-        )
-        with urlopen(request, timeout=30) as response:
-            body = json.load(response)
-        content = body["candidates"][0]["content"]["parts"][0]["text"]
+        for attempt in range(3):
+            try:
+                with urlopen(request, timeout=30) as response:
+                    body = json.load(response)
+                content = body["choices"][0]["message"]["content"]
+                break
+            except HTTPError as exc:
+                if exc.code != 429 or attempt == 2:
+                    raise
+                retry_after = exc.headers.get("Retry-After")
+                try:
+                    delay = min(float(retry_after), 20) if retry_after else 2 ** (attempt + 1)
+                except ValueError:
+                    delay = 2 ** (attempt + 1)
+                time.sleep(delay)
+        else:  # pragma: no cover - the loop either succeeds or raises
+            raise TranslationError("OpenRouter translation rate limit was exceeded")
     except HTTPError as exc:
-        raise TranslationError(f"Gemini translation failed ({exc.code})") from exc
+        if exc.code == 429:
+            raise TranslationError("OpenRouter rate limit reached. Please wait a moment and try again.") from exc
+        raise TranslationError(f"OpenRouter translation failed ({exc.code})") from exc
     except (KeyError, IndexError, json.JSONDecodeError, URLError, TimeoutError) as exc:
-        raise TranslationError("Gemini returned an invalid translation response") from exc
+        raise TranslationError("OpenRouter returned an invalid translation response") from exc
 
     try:
         return TranslationContent.model_validate_json(content)
     except ValidationError as exc:
-        raise TranslationError("Gemini returned an invalid translation response") from exc
+        raise TranslationError("OpenRouter returned an invalid translation response") from exc

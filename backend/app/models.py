@@ -31,7 +31,7 @@ class TranslationResponse(TranslationContent):
     source_text: str
     source_language: Literal["Thai", "English"]
     target_language: Literal["Thai", "English"]
-    provider: Literal["gemini"] = "gemini"
+    provider: Literal["openrouter"] = "openrouter"
 
 
 class AudioTranslationResponse(TranslationResponse):
@@ -58,3 +58,16 @@ class RecordingListResponse(BaseModel):
 
 class DriveRecordingTranslationRequest(BaseModel):
     file_id: str = Field(min_length=1)
+
+
+class PhraseAnalysisRequest(BaseModel):
+    transcript: str = Field(min_length=1, max_length=24_000)
+
+
+class PhraseOccurrence(BaseModel):
+    text: str
+    count: int = Field(ge=2)
+
+
+class PhraseAnalysisResponse(BaseModel):
+    phrases: list[PhraseOccurrence]

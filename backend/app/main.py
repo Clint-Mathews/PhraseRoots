@@ -2,7 +2,7 @@ import os
 from pathlib import Path
 from tempfile import NamedTemporaryFile
 
-from fastapi import Depends, FastAPI, File, HTTPException, UploadFile, status
+from fastapi import Depends, FastAPI, File, HTTPException, UploadFile, WebSocket, WebSocketDisconnect, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.concurrency import run_in_threadpool
@@ -16,6 +16,8 @@ from app.models import (
     RecordingListItem,
     RecordingListResponse,
     RecordingUploadResponse,
+    PhraseAnalysisRequest,
+    PhraseAnalysisResponse,
     TranslationRequest,
     TranslationResponse,
     TokenResponse,
@@ -28,6 +30,7 @@ from app.services.drive import (
 )
 from app.services.transcribe import TranscriptionError, transcribe_thai
 from app.services.translate import TranslationError, translate_text
+from app.services.vocabulary import extract_recurring_phrases
 
 
 app = FastAPI(title="Thai Learning API")
@@ -45,7 +48,7 @@ app.add_middleware(
 
 @app.get("/health")
 def health():
-    return {"status": "ok", "translation_provider": "gemini"}
+    return {"status": "ok", "translation_provider": "openrouter"}
 
 
 @app.post("/auth/login", response_model=TokenResponse)
@@ -65,6 +68,82 @@ def require_user(
     return verify_token(credentials.credentials, settings)
 
 
+@app.post("/phrases/analyze", response_model=PhraseAnalysisResponse)
+async def analyze_phrases(
+    request: PhraseAnalysisRequest, _user: str = Depends(require_user)
+) -> PhraseAnalysisResponse:
+    phrases = await run_in_threadpool(extract_recurring_phrases, request.transcript)
+    return PhraseAnalysisResponse(phrases=phrases)
+
+
+@app.websocket("/live-conversation")
+async def live_conversation(websocket: WebSocket) -> None:
+    # Accept first so browsers receive a WebSocket close code rather than an opaque
+    # HTTP 403 when authentication is invalid or the server secret has changed.
+    await websocket.accept()
+    token = websocket.query_params.get("token", "")
+    try:
+        verify_token(token, settings)
+    except HTTPException as exc:
+        await websocket.send_json({"type": "error", "message": exc.detail})
+        await websocket.close(code=1008, reason="Authentication failed")
+        return
+    recent_transcript: list[str] = []
+    try:
+        while True:
+            metadata = await websocket.receive_json()
+            if metadata.get("type") == "finish":
+                await websocket.send_json({"type": "finished"})
+                return
+            if metadata.get("type") != "chunk":
+                await websocket.send_json({"type": "error", "message": "Invalid live audio message"})
+                continue
+
+            audio_bytes = await websocket.receive_bytes()
+            suffix = metadata.get("format", "webm")
+            if suffix not in {"webm", "m4a"} or not audio_bytes:
+                await websocket.send_json({"type": "error", "message": "A WebM or M4A audio chunk is required"})
+                continue
+            if len(audio_bytes) > settings.max_audio_upload_bytes:
+                await websocket.send_json({"type": "error", "message": "Audio chunk exceeds the upload limit"})
+                continue
+            temp_path: str | None = None
+            try:
+                with NamedTemporaryFile(delete=False, suffix=f".{suffix}") as destination:
+                    temp_path = destination.name
+                    destination.write(audio_bytes)
+                transcript = await run_in_threadpool(
+                    transcribe_thai, temp_path, settings.whisper_model, settings.whisper_compute_type
+                )
+                content = await run_in_threadpool(
+                    translate_text,
+                    transcript,
+                    "Thai",
+                    "English",
+                    settings.openrouter_api_key,
+                    settings.openrouter_model,
+                )
+                recent_transcript.append(transcript)
+                del recent_transcript[:-6]
+                await websocket.send_json({
+                    "type": "segment",
+                    "timestamp": metadata.get("timestamp", 0),
+                    "source_text": transcript,
+                    "translation": content.translation,
+                    "romanization": content.romanization,
+                })
+            except (TranscriptionError, TranslationError) as exc:
+                await websocket.send_json({"type": "error", "message": str(exc)})
+            finally:
+                if temp_path:
+                    try:
+                        os.unlink(temp_path)
+                    except FileNotFoundError:
+                        pass
+    except WebSocketDisconnect:
+        return
+
+
 @app.post("/translate", response_model=TranslationResponse)
 def translate(request: TranslationRequest, _user: str = Depends(require_user)) -> TranslationResponse:
     try:
@@ -72,8 +151,8 @@ def translate(request: TranslationRequest, _user: str = Depends(require_user)) -
             request.text,
             request.source_language,
             request.target_language,
-            settings.gemini_api_key,
-            settings.gemini_model,
+            settings.openrouter_api_key,
+            settings.openrouter_model,
         )
     except TranslationError as exc:
         raise HTTPException(
@@ -118,7 +197,6 @@ async def translate_audio(audio: UploadFile = File(...), _user: str = Depends(re
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Audio file is empty",
             )
-
         transcript = await run_in_threadpool(
             transcribe_thai,
             temp_path,
@@ -130,8 +208,8 @@ async def translate_audio(audio: UploadFile = File(...), _user: str = Depends(re
             transcript,
             "Thai",
             "English",
-            settings.gemini_api_key,
-            settings.gemini_model,
+            settings.openrouter_api_key,
+            settings.openrouter_model,
         )
     except (TranscriptionError, TranslationError) as exc:
         raise HTTPException(
@@ -196,8 +274,8 @@ async def translate_drive_recording(
             transcript,
             "Thai",
             "English",
-            settings.gemini_api_key,
-            settings.gemini_model,
+            settings.openrouter_api_key,
+            settings.openrouter_model,
         )
     except (DriveUploadError, TranscriptionError, TranslationError) as exc:
         raise HTTPException(

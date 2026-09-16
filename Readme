@@ -1,7 +1,7 @@
 # PhraseRoots
 
 PhraseRoots transcribes Thai audio with faster-whisper and translates the
-transcript through the Gemini API. Ollama is not required.
+transcript through OpenRouter using Qwen3 30B. Ollama is not required.
 
 ## Setup
 
@@ -13,7 +13,7 @@ cp .env.example .env
 uv run uvicorn app.main:app --reload
 ```
 
-Set `GEMINI_API_KEY` in `.env` after creating a key in Google AI Studio. Do not
+Set `OPENROUTER_API_KEY` in `.env` after creating a key at OpenRouter. Do not
 add API keys to the repository or Vercel frontend environment variables.
 
 Configure the UI login at the same time. The API refuses protected requests
@@ -104,16 +104,16 @@ gcloud config set project "$PROJECT_ID"
 gcloud services enable run.googleapis.com cloudbuild.googleapis.com artifactregistry.googleapis.com secretmanager.googleapis.com
 ```
 
-2. Create a runtime service account and allow it to read the Gemini secret:
+2. Create a runtime service account and allow it to read the OpenRouter secret:
 
 ```sh
 gcloud iam service-accounts create "$SERVICE_ACCOUNT_NAME" --display-name="PhraseRoots API"
-gcloud secrets create gemini-api-key --replication-policy=automatic
-gcloud secrets versions add gemini-api-key --data-file=-
-gcloud secrets add-iam-policy-binding gemini-api-key --member="serviceAccount:$SERVICE_ACCOUNT" --role="roles/secretmanager.secretAccessor"
+gcloud secrets create openrouter-api-key --replication-policy=automatic
+gcloud secrets versions add openrouter-api-key --data-file=-
+gcloud secrets add-iam-policy-binding openrouter-api-key --member="serviceAccount:$SERVICE_ACCOUNT" --role="roles/secretmanager.secretAccessor"
 ```
 
-Paste the Gemini API key into the third command, then press Control-D. Never
+Paste the OpenRouter API key into the third command, then press Control-D. Never
 put this key in Vercel or commit it to the repository.
 
 3. Create a `PhraseRoots Recordings` folder in Google Drive and share it as
@@ -129,7 +129,7 @@ gcloud run deploy "$SERVICE_NAME" \
   --region "$REGION" \
   --service-account "$SERVICE_ACCOUNT" \
   --allow-unauthenticated \
-   --set-secrets GEMINI_API_KEY=gemini-api-key:latest,AUTH_PASSWORD=auth-password:latest,JWT_SECRET=jwt-secret:latest \
+    --set-secrets OPENROUTER_API_KEY=openrouter-api-key:latest,AUTH_PASSWORD=auth-password:latest,JWT_SECRET=jwt-secret:latest \
    --set-env-vars AUTH_USERNAME=YOUR_USERNAME,GOOGLE_DRIVE_FOLDER_ID=DRIVE_FOLDER_ID,ALLOWED_ORIGINS=http://localhost:5173,WHISPER_MODEL=small,WHISPER_COMPUTE_TYPE=int8 \
   --memory 2Gi --cpu 2 --timeout 300
 ```
@@ -156,7 +156,7 @@ gcloud run services update "$SERVICE_NAME" \
   --update-env-vars ALLOWED_ORIGINS=https://YOUR_PROJECT.vercel.app
 ```
 
-Do not set `GEMINI_API_KEY` in Vercel: it belongs only on the backend.
+Do not set `OPENROUTER_API_KEY` in Vercel: it belongs only on the backend.
 
 ### Continuous deployment
 
@@ -232,5 +232,5 @@ curl -X POST http://127.0.0.1:8000/translate/audio \
   -F 'audio=@/absolute/path/to/recording.m4a'
 ```
 
-Gemini receives transcript input only through the backend. This setup is
+OpenRouter receives transcript input only through the backend. This setup is
 intended for a trusted personal backend, not a public multi-user API.
