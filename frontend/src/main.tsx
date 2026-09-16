@@ -28,16 +28,22 @@ type Phrase = { text: string; count: number };
 
 const API_URL = import.meta.env.VITE_API_URL || "http://127.0.0.1:8000";
 const TOKEN_KEY = "phraseroots.accessToken";
+const AUTH_EXPIRED_EVENT = "phraseroots.auth-expired";
 
-function apiFetch(path: string, options: RequestInit = {}) {
+async function apiFetch(path: string, options: RequestInit = {}) {
   const token = localStorage.getItem(TOKEN_KEY);
-  return fetch(`${API_URL}${path}`, {
+  const response = await fetch(`${API_URL}${path}`, {
     ...options,
     headers: {
       ...options.headers,
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
     },
   });
+  if (response.status === 401) {
+    localStorage.removeItem(TOKEN_KEY);
+    window.dispatchEvent(new Event(AUTH_EXPIRED_EVENT));
+  }
+  return response;
 }
 
 function Icon({
@@ -170,6 +176,11 @@ function App() {
   const [authenticated, setAuthenticated] = useState(() =>
     Boolean(localStorage.getItem(TOKEN_KEY)),
   );
+  useEffect(() => {
+    const handleAuthExpired = () => setAuthenticated(false);
+    window.addEventListener(AUTH_EXPIRED_EVENT, handleAuthExpired);
+    return () => window.removeEventListener(AUTH_EXPIRED_EVENT, handleAuthExpired);
+  }, []);
   const showError = (message: string) => setError(message);
   if (!authenticated)
     return (

@@ -75,10 +75,10 @@ private Google Drive folder and deletes its temporary local copy.
 4. Add the folder ID to `backend/.env`; only set the key path when using a
    service account:
 
-```env
-GOOGLE_DRIVE_FOLDER_ID=your-google-drive-folder-id
-GOOGLE_SERVICE_ACCOUNT_FILE=
-```
+   ```env
+   GOOGLE_DRIVE_FOLDER_ID=your-google-drive-folder-id
+   GOOGLE_SERVICE_ACCOUNT_FILE=
+   ```
 
 Never commit the JSON key. Google Drive is the permanent recording library;
 this version does not create a database or server-side recording archive.
