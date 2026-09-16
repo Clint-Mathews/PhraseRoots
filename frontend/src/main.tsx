@@ -764,11 +764,13 @@ function LiveConversation({ onError, onLoadingChange, onPhrases }: { onError: (m
     stream.current?.getTracks().forEach((track) => track.stop());
   }, []);
   const time = `${String(Math.floor(seconds / 60)).padStart(2, "0")}:${String(seconds % 60).padStart(2, "0")}`;
+  const pendingLabel = `${pending} spoken section${pending === 1 ? "" : "s"}`;
+  const pendingMessage = `Translating ${pendingLabel}.`;
   const status = running
-    ? paused
-      ? "Paused - microphone is off"
-      : pending
-        ? `Listening - ${pending} section${pending === 1 ? "" : "s"} translating`
+    ? pending
+      ? `${paused ? "Paused" : "Listening"} - ${pendingLabel} translating`
+      : paused
+        ? "Paused - microphone is off"
         : "Listening for speech"
     : finished
       ? "Conversation complete"
@@ -808,7 +810,7 @@ function LiveConversation({ onError, onLoadingChange, onPhrases }: { onError: (m
       </div>
       <div className="section-heading"><div><span className="section-icon"><Icon name="conversation" /></span><h2>Conversation feed</h2></div><span className="section-meta">{segments.length ? `${segments.length} translated section${segments.length === 1 ? "" : "s"}` : "THAI → ENGLISH"}</span></div>
       <div className="live-stream" aria-live="polite">
-        {!segments.length && <EmptyState icon="conversation" title={running ? paused ? "Ready when you are" : "Listening for your first words…" : "A conversation waiting to happen"}>{running ? paused ? "Resume listening to continue your conversation." : "Speak a few words in Thai. Your translation will appear after the first spoken section." : "Start live translation and your words will find a home here. Original speech, pronunciation, and meaning — together."}</EmptyState>}
+        {!segments.length && <EmptyState icon="conversation" title={running ? pending ? "Translating your words" : paused ? "Ready when you are" : "Listening for your first words…" : "A conversation waiting to happen"}>{running ? pending ? `${pendingMessage} ${paused ? "Resume listening when you’re ready." : "Keep speaking naturally."}` : paused ? "Resume listening to continue your conversation." : "Speak a few words in Thai. Your translation will appear after the first spoken section." : "Start live translation and your words will find a home here. Original speech, pronunciation, and meaning — together."}</EmptyState>}
         {segments.map((segment, index) => (
           <article key={`${segment.timestamp}-${index}`}>
             <time>{new Date(segment.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</time>

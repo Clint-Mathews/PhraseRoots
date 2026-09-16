@@ -104,17 +104,24 @@ gcloud config set project "$PROJECT_ID"
 gcloud services enable run.googleapis.com cloudbuild.googleapis.com artifactregistry.googleapis.com secretmanager.googleapis.com
 ```
 
-2. Create a runtime service account and allow it to read the OpenRouter secret:
+2. Create a runtime service account and allow it to read the application secrets:
 
 ```sh
 gcloud iam service-accounts create "$SERVICE_ACCOUNT_NAME" --display-name="PhraseRoots API"
 gcloud secrets create openrouter-api-key --replication-policy=automatic
 gcloud secrets versions add openrouter-api-key --data-file=-
+gcloud secrets create auth-password --replication-policy=automatic
+gcloud secrets versions add auth-password --data-file=-
+gcloud secrets create jwt-secret --replication-policy=automatic
+openssl rand -hex 32 | gcloud secrets versions add jwt-secret --data-file=-
 gcloud secrets add-iam-policy-binding openrouter-api-key --member="serviceAccount:$SERVICE_ACCOUNT" --role="roles/secretmanager.secretAccessor"
+gcloud secrets add-iam-policy-binding auth-password --member="serviceAccount:$SERVICE_ACCOUNT" --role="roles/secretmanager.secretAccessor"
+gcloud secrets add-iam-policy-binding jwt-secret --member="serviceAccount:$SERVICE_ACCOUNT" --role="roles/secretmanager.secretAccessor"
 ```
 
-Paste the OpenRouter API key into the third command, then press Control-D. Never
-put this key in Vercel or commit it to the repository.
+Paste the OpenRouter API key and application password into their respective
+`gcloud secrets versions add` commands, then press Control-D. Never put these
+values in Vercel or commit them to the repository.
 
 3. Create a `PhraseRoots Recordings` folder in Google Drive and share it as
 **Editor** with the service-account email stored in `$SERVICE_ACCOUNT`.

@@ -32,6 +32,7 @@ jobs:
           --source backend
           --project "${{ vars.GCP_PROJECT_ID }}"
           --region "${{ vars.GCP_REGION }}"
+          --set-secrets OPENROUTER_API_KEY=openrouter-api-key:latest,AUTH_PASSWORD=auth-password:latest,JWT_SECRET=jwt-secret:latest
           --memory 4Gi
           --concurrency 1
           --quiet
