@@ -1,0 +1,45 @@
+from typing import Literal
+
+from pydantic import BaseModel, ConfigDict, Field
+
+
+class TranslationRequest(BaseModel):
+    text: str = Field(min_length=1, max_length=12_000)
+
+
+class TranslationContent(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    translation: str = Field(min_length=1)
+    notes: list[str]
+
+
+class TranslationResponse(TranslationContent):
+    source_text: str
+    provider: Literal["gemini"] = "gemini"
+
+
+class AudioTranslationResponse(TranslationResponse):
+    filename: str
+
+
+class RecordingUploadResponse(BaseModel):
+    filename: str
+    file_id: str
+    web_view_link: str
+
+
+class RecordingListItem(BaseModel):
+    file_id: str
+    filename: str
+    mime_type: str
+    created_time: str
+    web_view_link: str
+
+
+class RecordingListResponse(BaseModel):
+    recordings: list[RecordingListItem]
+
+
+class DriveRecordingTranslationRequest(BaseModel):
+    file_id: str = Field(min_length=1)

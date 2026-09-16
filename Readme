@@ -1,0 +1,175 @@
+# PhraseRoots
+
+PhraseRoots transcribes Thai audio with faster-whisper and translates the
+transcript through the Gemini API. Ollama is not required.
+
+## Setup
+
+From `backend/`:
+
+```bash
+uv sync
+cp .env.example .env
+uv run uvicorn app.main:app --reload
+```
+
+Set `GEMINI_API_KEY` in `.env` after creating a key in Google AI Studio. Do not
+add API keys to the repository or Vercel frontend environment variables.
+
+## Web UI
+
+The Vite React UI lives in `frontend/`. It can record audio in the browser,
+download a local copy, and translate typed conversations through the backend.
+
+Start it locally in a second terminal:
+
+```bash
+cd frontend
+cp .env.example .env
+npm install
+npm run dev
+```
+
+Set `VITE_API_URL` in `frontend/.env` to the address of the FastAPI service:
+
+```env
+VITE_API_URL=http://127.0.0.1:8000
+```
+
+Open the URL printed by Vite, normally `http://localhost:5173`. The browser
+will ask for microphone permission when you start a recording. Recordings are
+downloaded as `.webm` files when **Download to this device** is selected.
+
+### Save recordings to your Google Drive
+
+PhraseRoots does not use a database for recordings. The **Save in my Google
+Drive** option sends audio to `POST /recordings`; the backend uploads it to one
+private Google Drive folder and deletes its temporary local copy.
+
+1. Create a `PhraseRoots Recordings` folder in Google Drive and copy its folder
+   ID from the URL.
+2. In Google Cloud, enable the Google Drive API.
+3. Authenticate the local backend using one of the following methods:
+
+   ```sh
+   gcloud auth application-default login --scopes=https://www.googleapis.com/auth/drive.file,https://www.googleapis.com/auth/drive.metadata.readonly
+   ```
+
+   Sign in with the Google account that owns or can edit the folder. This is the
+   preferred approach when organisation policy prevents service-account key
+   creation.
+
+   Alternatively, create a service-account JSON key, share the Drive folder
+   with its service account email as **Editor**, and store the key outside the
+   repository.
+4. Add the folder ID to `backend/.env`; only set the key path when using a
+   service account:
+
+```env
+GOOGLE_DRIVE_FOLDER_ID=your-google-drive-folder-id
+GOOGLE_SERVICE_ACCOUNT_FILE=
+```
+
+Never commit the JSON key. Google Drive is the permanent recording library;
+this version does not create a database or server-side recording archive.
+
+### Deploy backend to Cloud Run
+
+The `backend/Dockerfile` runs CPU `faster-whisper` on Linux with FFmpeg. The
+first audio request on each new Cloud Run instance downloads the configured
+Whisper model, so text translation is immediately available while audio
+translation may have a cold start.
+
+1. Select the target GCP project and enable deployment services. Replace the
+placeholders with your own values:
+
+```sh
+export PROJECT_ID=YOUR_PROJECT_ID
+export REGION=YOUR_REGION
+export SERVICE_NAME=phraseroots-api
+export SERVICE_ACCOUNT_NAME=phraseroots-api
+export SERVICE_ACCOUNT="$SERVICE_ACCOUNT_NAME@$PROJECT_ID.iam.gserviceaccount.com"
+
+gcloud config set project "$PROJECT_ID"
+gcloud services enable run.googleapis.com cloudbuild.googleapis.com artifactregistry.googleapis.com secretmanager.googleapis.com
+```
+
+2. Create a runtime service account and allow it to read the Gemini secret:
+
+```sh
+gcloud iam service-accounts create "$SERVICE_ACCOUNT_NAME" --display-name="PhraseRoots API"
+gcloud secrets create gemini-api-key --replication-policy=automatic
+gcloud secrets versions add gemini-api-key --data-file=-
+gcloud secrets add-iam-policy-binding gemini-api-key --member="serviceAccount:$SERVICE_ACCOUNT" --role="roles/secretmanager.secretAccessor"
+```
+
+Paste the Gemini API key into the third command, then press Control-D. Never
+put this key in Vercel or commit it to the repository.
+
+3. Create a `PhraseRoots Recordings` folder in Google Drive and share it as
+**Editor** with the service-account email stored in `$SERVICE_ACCOUNT`.
+Enable the Google Drive API if it is not enabled and copy the folder ID from
+its URL.
+
+4. Deploy from the repository root. Replace `DRIVE_FOLDER_ID` before running:
+
+```sh
+gcloud run deploy "$SERVICE_NAME" \
+  --source backend \
+  --region "$REGION" \
+  --service-account "$SERVICE_ACCOUNT" \
+  --allow-unauthenticated \
+  --set-secrets GEMINI_API_KEY=gemini-api-key:latest \
+  --set-env-vars GOOGLE_DRIVE_FOLDER_ID=DRIVE_FOLDER_ID,ALLOWED_ORIGINS=http://localhost:5173,WHISPER_MODEL=small,WHISPER_COMPUTE_TYPE=int8 \
+  --memory 2Gi --cpu 2 --timeout 300
+```
+
+5. Copy the service URL returned by the command and verify it:
+
+```sh
+curl https://YOUR_CLOUD_RUN_URL/health
+```
+
+### Deploy UI to Vercel
+
+1. Import `Clint-Mathews/PhraseRoots` in Vercel and set the project root
+directory to `frontend`.
+2. Add the `VITE_API_URL` environment variable for Production, Preview, and
+Development. Its value is the Cloud Run URL from the previous section, without
+a trailing slash.
+3. Deploy. Vercel supplies the final `https://YOUR_PROJECT.vercel.app` URL.
+4. Update Cloud Run CORS with that URL, then test the production UI:
+
+```sh
+gcloud run services update "$SERVICE_NAME" \
+  --region "$REGION" \
+  --update-env-vars ALLOWED_ORIGINS=https://YOUR_PROJECT.vercel.app
+```
+
+Do not set `GEMINI_API_KEY` in Vercel: it belongs only on the backend.
+
+## API
+
+Check the service:
+
+```bash
+curl http://127.0.0.1:8000/health
+```
+
+Translate Thai text:
+
+```bash
+curl -X POST http://127.0.0.1:8000/translate \
+  -H 'Content-Type: application/json' \
+  -d '{"text":"สวัสดีครับ"}'
+```
+
+Transcribe and translate an audio recording:
+
+```bash
+curl -X POST http://127.0.0.1:8000/translate/audio \
+  -F 'audio=@/absolute/path/to/recording.m4a'
+```
+
+Gemini receives transcript input only through the backend. This setup is
+intended for a trusted personal backend, not a public multi-user API.

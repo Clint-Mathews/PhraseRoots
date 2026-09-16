@@ -17,3 +17,23 @@ __pycache__/
 
 # Local system files
 .DS_Store
+.env
+
+# Only the application and dependency manifests are needed by the Docker build.
+.env
+.venv/
+.pytest_cache/
+__pycache__/
+*.py[cod]
+tests/
+scripts/
+.git/
+.gitignore
+.dockerignore
+
+
+node_modules/
+dist/
+*.tsbuildinfo
+vite.config.js
+vite.config.d.ts
