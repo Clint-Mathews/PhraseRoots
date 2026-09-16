@@ -118,7 +118,7 @@ function Icon({
 }
 
 function App() {
-  const [page, setPage] = useState<Page>("record");
+  const [page, setPage] = useState<Page>("live");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [phrases, setPhrases] = useState<Phrase[]>([]);
@@ -140,19 +140,11 @@ function App() {
   return (
     <main>
       <aside>
-        <button className="brand" onClick={() => setPage("record")} title="Go to recording">
+        <button className="brand" onClick={() => setPage("live")} title="Go to live conversation">
           <span>PR</span>
           <b>PhraseRoots</b>
         </button>
         <nav>
-          <button
-            className={page === "record" ? "active" : ""}
-            onClick={() => setPage("record")}
-            title="Record a conversation"
-          >
-            <Icon name="mic" />
-            Record
-          </button>
           <button
             className={page === "live" ? "active" : ""}
             onClick={() => setPage("live")}
@@ -160,6 +152,14 @@ function App() {
           >
             <Icon name="conversation" />
             Live
+          </button>
+          <button
+            className={page === "record" ? "active" : ""}
+            onClick={() => setPage("record")}
+            title="Record a conversation"
+          >
+            <Icon name="mic" />
+            Record
           </button>
           <button
             className={page === "translate" ? "active" : ""}
@@ -530,6 +530,7 @@ function LiveConversation({ onError, onLoadingChange, onPhrases }: { onError: (m
   const [archiveAudio, setArchiveAudio] = useState<Blob | null>(null);
   const [recordingName, setRecordingName] = useState("");
   const [saving, setSaving] = useState(false);
+  const [savedToDrive, setSavedToDrive] = useState(false);
   // A 12-second chunk keeps live translation responsive without exhausting a
   // low per-minute translation quota during a longer conversation.
   const chunkDuration = 12_000;
@@ -627,6 +628,7 @@ function LiveConversation({ onError, onLoadingChange, onPhrases }: { onError: (m
         setSeconds(0);
         setFinished(false);
         setArchiveAudio(null);
+        setSavedToDrive(false);
         setPaused(false);
         setRunning(true);
         startChunk();
@@ -674,14 +676,46 @@ function LiveConversation({ onError, onLoadingChange, onPhrases }: { onError: (m
       form.append("audio", new File([archiveAudio], `${name}.${extension}`, { type: archiveAudio.type }));
       const response = await apiFetch("/recordings", { method: "POST", body: form });
       if (!response.ok) throw new Error((await response.json()).detail || "Could not save recording");
-      setArchiveAudio(null);
-      setFinished(false);
+      setSavedToDrive(true);
     } catch (error) {
       onError(error instanceof Error ? error.message : "Could not save recording");
     } finally {
       setSaving(false);
       onLoadingChange(false);
     }
+  };
+  const downloadAudio = () => {
+    if (!archiveAudio) return;
+    const name = recordingName.trim() || `Live conversation ${new Date().toLocaleString().replaceAll("/", "-").replaceAll(":", "-")}`;
+    const extension = archiveAudio.type.includes("mp4") ? "m4a" : "webm";
+    const url = URL.createObjectURL(archiveAudio);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `${name}.${extension}`;
+    document.body.append(link);
+    link.click();
+    link.remove();
+    window.setTimeout(() => URL.revokeObjectURL(url), 0);
+  };
+  const downloadTranscript = () => {
+    const transcript = segmentsRef.current.map((segment) => [
+      new Date(segment.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+      segment.source_text,
+      segment.romanization,
+      segment.translation,
+    ].join("\n")).join("\n\n");
+    if (!transcript) {
+      onError("No transcription is available to download.");
+      return;
+    }
+    const url = URL.createObjectURL(new Blob([transcript], { type: "text/plain;charset=utf-8" }));
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `phraseroots-transcription-${new Date().toISOString().slice(0, 10)}.txt`;
+    document.body.append(link);
+    link.click();
+    link.remove();
+    window.setTimeout(() => URL.revokeObjectURL(url), 0);
   };
   useEffect(() => () => {
     active.current = false;
@@ -732,11 +766,16 @@ function LiveConversation({ onError, onLoadingChange, onPhrases }: { onError: (m
         ))}
         {pending > 0 && <p className="live-pending">Translating {pending} spoken section{pending === 1 ? "" : "s"}...</p>}
       </div>
-      {finished && archiveAudio && (
+      {!running && archiveAudio && (
         <div className="live-save-prompt">
-          <div><p className="eyebrow">LIVE TRANSCRIPTION COMPLETE</p><h2>Save this audio recording?</h2><p>Your transcript and phrase analysis are ready. Save the original audio to access it in the Library.</p></div>
+          <div><p className="eyebrow">LIVE RECORDING COMPLETE</p><h2>Save your audio and transcription</h2><p>Store the audio in your Library or on this device, then download the transcription when it is ready.</p></div>
           <label>Recording name<input value={recordingName} onChange={(event) => setRecordingName(event.target.value)} placeholder="Live conversation" /></label>
-          <div><button className="discard-recording" onClick={() => { setArchiveAudio(null); setFinished(false); }}>Discard audio</button><button className="save-live-recording" disabled={saving} onClick={saveRecording}>{saving ? "Saving..." : "Save to recordings"}</button></div>
+          <div>
+            <button className="discard-recording" onClick={() => { setArchiveAudio(null); setFinished(false); setSavedToDrive(false); }}>Discard audio</button>
+            <button className="download-live-recording" onClick={downloadAudio}>Download audio</button>
+            <button className="download-live-recording" onClick={downloadTranscript}>Download transcription</button>
+            <button className="save-live-recording" disabled={saving || savedToDrive} onClick={saveRecording}>{saving ? "Saving..." : savedToDrive ? "Saved to Drive" : "Save to Drive"}</button>
+          </div>
         </div>
       )}
     </section>
@@ -840,6 +879,7 @@ function Translator({ onError, onLoadingChange }: { onError: (message: string) =
     [recordings, setRecordings] = useState<Recording[]>([]),
     [selectedRecording, setSelectedRecording] = useState(""),
     [result, setResult] = useState<Result | null>(null),
+    [hasInteracted, setHasInteracted] = useState(false),
     [working, setWorking] = useState(false),
     [speaking, setSpeaking] = useState<"thai" | "english" | null>(null);
   const utteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
@@ -850,12 +890,12 @@ function Translator({ onError, onLoadingChange }: { onError: (message: string) =
     ? result.source_language === "Thai"
       ? result.source_text
       : result.translation
-    : defaultThai;
+    : hasInteracted ? "" : defaultThai;
   const englishText = result
     ? result.source_language === "English"
       ? result.source_text
       : result.translation
-    : defaultEnglish;
+    : hasInteracted ? "" : defaultEnglish;
   useEffect(() => {
     onLoadingChange(true);
     apiFetch('/recordings')
@@ -909,7 +949,7 @@ function Translator({ onError, onLoadingChange }: { onError: (message: string) =
     window.speechSynthesis.speak(utterance);
   };
   const downloadTranslation = () => {
-    const romanization = result?.romanization || defaultRomanization;
+    const romanization = result?.romanization || (hasInteracted ? "" : defaultRomanization);
     const notes = result?.notes || [
       "อย่ามายุ่งกับฉัน means “leave me alone”",
       "ฉันเกลียดงานของฉัน means “I hate my work”",
@@ -944,8 +984,9 @@ function Translator({ onError, onLoadingChange }: { onError: (message: string) =
   };
   const translate = async (event: FormEvent) => {
     event.preventDefault();
-    if (!text.trim()) return;
     setResult(null);
+    setHasInteracted(true);
+    if (!text.trim()) return;
     setWorking(true);
     onLoadingChange(true);
     try {
@@ -1071,11 +1112,27 @@ function Translator({ onError, onLoadingChange }: { onError: (message: string) =
             <div className="text-box">
               <textarea
                 value={text}
-                onChange={(e) => setText(e.target.value)}
+                onChange={(e) => {
+                  setText(e.target.value);
+                  setResult(null);
+                  setHasInteracted(true);
+                }}
                 placeholder="Type text to translate..."
               />
               <span>{text.length} / 12,000</span>
             </div>
+            <button
+              type="button"
+              className="clear-text"
+              onClick={() => {
+                setText("");
+                setResult(null);
+                setHasInteracted(true);
+              }}
+              disabled={!text && !result}
+            >
+              Clear text
+            </button>
           </>
         ) : (
           <div className="audio-picker">
@@ -1150,10 +1207,10 @@ function Translator({ onError, onLoadingChange }: { onError: (message: string) =
             <span>THAI</span>
             <p>
               {thaiText}
-            </p>
-            <p className="romanization">
-              {result?.romanization || defaultRomanization}
-            </p>
+             </p>
+             <p className="romanization">
+              {result?.romanization || (hasInteracted ? "" : defaultRomanization)}
+             </p>
             <button
               className={speaking === "thai" ? "listening" : ""}
               onClick={() =>

@@ -682,8 +682,9 @@ h1 {
 .live-save-prompt label { display: grid; gap: 6px; color: #68726d; font: 500 10px "DM Mono"; letter-spacing: .08em; text-transform: uppercase; }
 .live-save-prompt input { width: 100%; border: 1px solid #cdd8c9; border-radius: 7px; padding: 10px 11px; background: #fffdf8; color: #203d36; font: 14px "DM Sans"; }
 .live-save-prompt > div:last-child { display: flex; gap: 9px; justify-content: flex-end; }
-.discard-recording, .save-live-recording { border: 0; border-radius: 7px; padding: 10px 13px; font-size: 13px; font-weight: 600; }
+.discard-recording, .download-live-recording, .save-live-recording { border: 0; border-radius: 7px; padding: 10px 13px; font-size: 13px; font-weight: 600; }
 .discard-recording { background: transparent; color: #68726d; }
+.download-live-recording { background: #fffdf8; color: #315448; border: 1px solid #c5d4c1; }
 .save-live-recording { background: #254b40; color: #fff; }
 .save-live-recording:disabled { opacity: .55; cursor: not-allowed; }
 .phrase-layout { max-width: 900px; display: grid; grid-template-columns: minmax(240px, .85fr) minmax(300px, 1.15fr); gap: 18px; }
@@ -759,6 +760,18 @@ h1 {
   text-align: right;
   color: #a4aaa5;
   font: 10px "DM Mono";
+}
+.clear-text {
+  margin-top: 9px;
+  border: 0;
+  padding: 0;
+  background: transparent;
+  color: #557065;
+  font: 600 11px "DM Sans";
+}
+.clear-text:disabled {
+  color: #a4aaa5;
+  cursor: not-allowed;
 }
 .translate-button {
   width: auto;
