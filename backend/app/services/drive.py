@@ -56,20 +56,31 @@ def upload_recording(
         raise DriveUploadError("Could not upload recording to Google Drive") from exc
 
 
-def list_recordings(folder_id: str, service_account_file: str) -> list[dict[str, str]]:
+def list_recordings(
+    folder_id: str,
+    service_account_file: str,
+    search: str = "",
+    page_size: int = 20,
+    page_token: str = "",
+) -> tuple[list[dict[str, str]], str | None]:
     try:
         drive = get_drive(folder_id, service_account_file)
+        query = f"'{folder_id}' in parents and trashed = false"
+        if search:
+            escaped_search = search.replace("'", "\\'")
+            query += f" and name contains '{escaped_search}'"
         response = (
             drive.files()
             .list(
-                q=f"'{folder_id}' in parents and trashed = false",
+                q=query,
                 orderBy="createdTime desc",
-                pageSize=100,
+                pageSize=page_size,
+                pageToken=page_token or None,
                 fields="files(id,name,mimeType,createdTime,webViewLink)",
             )
             .execute()
         )
-        return response.get("files", [])
+        return response.get("files", []), response.get("nextPageToken")
     except DriveUploadError:
         raise
     except Exception as exc:

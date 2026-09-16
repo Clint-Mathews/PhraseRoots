@@ -54,6 +54,7 @@ class RecordingListItem(BaseModel):
 
 class RecordingListResponse(BaseModel):
     recordings: list[RecordingListItem]
+    next_page_token: str | None = None
 
 
 class DriveRecordingTranslationRequest(BaseModel):

@@ -2,7 +2,7 @@ import os
 from pathlib import Path
 from tempfile import NamedTemporaryFile
 
-from fastapi import Depends, FastAPI, File, HTTPException, UploadFile, WebSocket, WebSocketDisconnect, status
+from fastapi import Depends, FastAPI, File, HTTPException, Query, UploadFile, WebSocket, WebSocketDisconnect, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.concurrency import run_in_threadpool
@@ -353,12 +353,20 @@ async def upload_recording_to_drive(audio: UploadFile = File(...), _user: str = 
 
 
 @app.get("/recordings", response_model=RecordingListResponse)
-async def get_recordings(_user: str = Depends(require_user)) -> RecordingListResponse:
+async def get_recordings(
+    search: str = Query(default="", max_length=200),
+    page_size: int = Query(default=20, ge=1, le=100),
+    page_token: str = Query(default=""),
+    _user: str = Depends(require_user),
+) -> RecordingListResponse:
     try:
-        recordings = await run_in_threadpool(
+        recordings, next_page_token = await run_in_threadpool(
             list_recordings,
             settings.google_drive_folder_id,
             settings.google_service_account_file,
+            search.strip(),
+            page_size,
+            page_token,
         )
     except DriveUploadError as exc:
         raise HTTPException(
@@ -366,6 +374,7 @@ async def get_recordings(_user: str = Depends(require_user)) -> RecordingListRes
         ) from exc
 
     return RecordingListResponse(
+        next_page_token=next_page_token,
         recordings=[
             RecordingListItem(
                 file_id=recording["id"],

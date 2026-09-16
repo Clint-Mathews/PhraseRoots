@@ -237,7 +237,7 @@ function App() {
         ) : page === "phrases" ? (
           <PhraseViewer phrases={phrases} onError={showError} onLoadingChange={setLoading} />
         ) : page === "translate" ? (
-          <Translator onError={showError} onLoadingChange={setLoading} />
+          <Translator onError={showError} onLoadingChange={setLoading} onPhrases={setPhrases} />
         ) : (
           <Library onError={showError} onLoadingChange={setLoading} />
         )}
@@ -823,10 +823,19 @@ function PhraseViewer({ phrases, onError, onLoadingChange }: { phrases: Phrase[]
 
 function Library({ onError, onLoadingChange }: { onError: (message: string) => void; onLoadingChange: (loading: boolean) => void }) {
   const [recordings, setRecordings] = useState<Recording[]>([]),
-    [loading, setLoading] = useState(true);
+    [loading, setLoading] = useState(true),
+    [search, setSearch] = useState(""),
+    [page, setPage] = useState(0),
+    [pageTokens, setPageTokens] = useState([""] as string[]),
+    [nextPageToken, setNextPageToken] = useState("");
+  const pageToken = pageTokens[page] || "";
   useEffect(() => {
+    const params = new URLSearchParams({ page_size: "20" });
+    if (search) params.set("search", search);
+    if (pageToken) params.set("page_token", pageToken);
+    setLoading(true);
     onLoadingChange(true);
-    apiFetch('/recordings')
+    apiFetch(`/recordings?${params}`)
       .then(async (response) => {
         if (!response.ok)
           throw new Error(
@@ -834,43 +843,64 @@ function Library({ onError, onLoadingChange }: { onError: (message: string) => v
           );
         return response.json();
       })
-      .then((data) => setRecordings(data.recordings))
+      .then((data) => {
+        setRecordings(data.recordings);
+        setNextPageToken(data.next_page_token || "");
+        setPageTokens((tokens) => {
+          const nextTokens = tokens.slice(0, page + 1);
+          if (data.next_page_token) nextTokens[page + 1] = data.next_page_token;
+          return nextTokens;
+        });
+      })
       .catch((e) => onError(e instanceof Error ? e.message : "Could not load recordings"))
       .finally(() => {
         setLoading(false);
         onLoadingChange(false);
       });
-  }, []);
-  if (loading) return <p className="library-state">Loading recordings...</p>;
-  if (!recordings.length)
-    return (
-      <p className="library-state">No recordings in this Drive folder yet.</p>
-    );
+  }, [page, pageToken, search]);
   return (
     <section className="library-list">
-      {recordings.map((recording) => (
-        <article key={recording.file_id}>
-          <div>
-            <b>{recording.filename}</b>
-            <small>{new Date(recording.created_time).toLocaleString()}</small>
-          </div>
-          <a
-            className="view-recording"
-            href={recording.web_view_link}
-            target="_blank"
-            rel="noreferrer"
-            aria-label={`View ${recording.filename} in Google Drive`}
-            title="View in Google Drive"
-          >
-            <Icon name="view" />
-          </a>
-        </article>
-      ))}
+      <input
+        className="recording-search"
+        type="search"
+        value={search}
+        onChange={(event) => {
+          setSearch(event.target.value);
+          setPage(0);
+          setPageTokens([""]);
+          setNextPageToken("");
+        }}
+        placeholder="Search recordings"
+        aria-label="Search recordings"
+      />
+      {loading ? <p className="library-state">Loading recordings...</p> : !recordings.length ? <p className="library-state">No recordings found.</p> : recordings.map((recording) => (
+          <article key={recording.file_id}>
+            <div>
+              <b>{recording.filename}</b>
+              <small>{new Date(recording.created_time).toLocaleString()}</small>
+            </div>
+            <a
+              className="view-recording"
+              href={recording.web_view_link}
+              target="_blank"
+              rel="noreferrer"
+              aria-label={`View ${recording.filename} in Google Drive`}
+              title="View in Google Drive"
+            >
+              <Icon name="view" />
+            </a>
+          </article>
+        ))}
+      <div className="recording-pagination">
+        <button type="button" disabled={page === 0 || loading} onClick={() => setPage((value) => value - 1)}>Previous</button>
+        <span>Page {page + 1}</span>
+        <button type="button" disabled={!nextPageToken || loading} onClick={() => setPage((value) => value + 1)}>Next</button>
+      </div>
     </section>
   );
 }
 
-function Translator({ onError, onLoadingChange }: { onError: (message: string) => void; onLoadingChange: (loading: boolean) => void }) {
+function Translator({ onError, onLoadingChange, onPhrases }: { onError: (message: string) => void; onLoadingChange: (loading: boolean) => void; onPhrases: (phrases: Phrase[]) => void }) {
   const [mode, setMode] = useState<"text" | "audio">("audio"),
     [source, setSource] = useState("Thai"),
     [target, setTarget] = useState("English"),
@@ -1053,7 +1083,18 @@ function Translator({ onError, onLoadingChange }: { onError: (message: string) =
         throw new Error(
           (await response.json()).detail || "Audio translation unavailable",
         );
-      setResult(await response.json());
+      const translation = await response.json() as Result;
+      setResult(translation);
+      if (translation.source_text.trim()) {
+        const phrasesResponse = await apiFetch("/phrases/analyze", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ transcript: translation.source_text }),
+        });
+        if (!phrasesResponse.ok)
+          throw new Error((await phrasesResponse.json()).detail || "Could not analyze phrases");
+        onPhrases((await phrasesResponse.json()).phrases);
+      }
     } catch (e) {
       onError(e instanceof Error ? e.message : "Something went wrong");
     } finally {

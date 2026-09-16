@@ -676,6 +676,10 @@ h1 {
 .live-translation { margin-top: 10px !important; color: #31463d; font-size: 14px; font-weight: 600; }
 .live-empty, .live-pending { align-self: center; margin: auto; color: #7a837e; font-size: 13px; text-align: center; }
 .live-pending { margin: 0; color: #557568; text-align: left; }
+.recording-search { width: 100%; margin-bottom: 12px; border: 1px solid #ddd9cf; border-radius: 7px; padding: 11px 12px; background: #fffdf8; color: #27473d; font: 14px "DM Sans"; }
+.recording-pagination { display: flex; align-items: center; justify-content: flex-end; gap: 12px; margin-top: 14px; color: #68726d; font: 11px "DM Mono"; }
+.recording-pagination button { border: 1px solid #d8d4ca; border-radius: 6px; padding: 7px 10px; background: #fffdf8; color: #315448; font: 600 11px "DM Sans"; }
+.recording-pagination button:disabled { opacity: .45; cursor: not-allowed; }
 .live-save-prompt { display: grid; gap: 15px; margin-top: 18px; padding: 22px; border: 1px solid #d4dfcf; border-radius: 12px; background: #edf3e9; }
 .live-save-prompt h2 { font-size: 27px; }
 .live-save-prompt p:not(.eyebrow) { margin: 8px 0 0; color: #617069; font-size: 13px; }
